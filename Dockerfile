@@ -2,15 +2,12 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Copy solution and project files accounting for the src subdirectory
-COPY ["*.sln", "./"]
-COPY ["src/*/*.csproj", "src/"]
-RUN dotnet restore "src/spool-dat-torrent.web/spool-dat-torrent.web.csproj"
-
-# Copy the rest of the source code and build
+# Copy everything over into the container workspace
 COPY . .
-WORKDIR "/src/src/spool-dat-torrent.web"
-RUN dotnet publish "spool-dat-torrent.web.csproj" -c Release -o /app/publish /p:UseAppHost=false
+
+# Restore and publish directly from the correct src path
+RUN dotnet restore "src/spool-dat-torrent.web/spool-dat-torrent.web.csproj"
+RUN dotnet publish "src/spool-dat-torrent.web/spool-dat-torrent.web.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # Stage 2: Final Lightweight Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
