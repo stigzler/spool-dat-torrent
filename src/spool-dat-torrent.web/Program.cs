@@ -1,6 +1,7 @@
-using spool_dat_torrent.web.Components;
+using MudBlazor.Services;
+using SpoolDatTorrent.Web.Components;
 
-namespace spool_dat_torrent.web
+namespace SpoolDatTorrent.Web
 {
     public class Program
     {
@@ -12,19 +13,26 @@ namespace spool_dat_torrent.web
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
 
+            // Add MudBlazor services
+            builder.Services.AddMudServices(config =>
+            {
+                config.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.BottomRight;
+                config.SnackbarConfiguration.PreventDuplicates = false;
+                config.SnackbarConfiguration.NewestOnTop = true;
+                config.SnackbarConfiguration.ShowCloseIcon = true;
+                config.SnackbarConfiguration.VisibleStateDuration = 5000;
+            });
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment())
             {
-                app.UseExceptionHandler("/Error");
-                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+                app.UseExceptionHandler("/Error", createScopeForErrors: true);
                 app.UseHsts();
             }
 
-            app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
             app.UseHttpsRedirection();
-
             app.UseAntiforgery();
 
             app.MapStaticAssets();

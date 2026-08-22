@@ -4,6 +4,8 @@
     <Project Path="src/spool-dat-torrent.core/spool-dat-torrent.core.csproj" />
     <Project Path="src/spool-dat-torrent.web/spool-dat-torrent.web.csproj" />
   </Folder>
-  <Folder Name="/tests/" />
+  <Folder Name="/tests/">
+    <Project Path="tests/SpoolDatTorrent.Core.Tests/SpoolDatTorrent.Core.Tests.csproj" />
+  </Folder>
   <Project Path="dev/dev.shproj" />
 </Solution>
