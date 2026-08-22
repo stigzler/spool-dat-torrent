@@ -1,4 +1,5 @@
 <Solution>
+  <Folder Name="/Solution Items/" />
   <Folder Name="/src/">
     <Project Path="src/spool-dat-torrent.core/spool-dat-torrent.core.csproj" />
     <Project Path="src/spool-dat-torrent.web/spool-dat-torrent.web.csproj" />

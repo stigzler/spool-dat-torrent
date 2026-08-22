@@ -361,3 +361,27 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# ===============================================
+# SpoolDatTorrent Custom Ignores
+# ===============================================
+
+# Ignore Docker volume mount directories
+/data/
+/dats/
+
+# Ignore massive file types anywhere in the project
+*.dat
+*.torrent
+*.zip
+*.7z
+
+# Ignore application state/database files
+job_session.json
+*.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Ignore local environment variables (security)
+.env
