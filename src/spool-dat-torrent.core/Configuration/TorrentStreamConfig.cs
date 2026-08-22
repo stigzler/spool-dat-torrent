@@ -7,9 +7,10 @@ namespace SpoolDatTorrent.Core.Configuration
     public class TorrentStreamConfig
     {
         public string Name { get; set; } = string.Empty;
-        public string TorrentIdentifier { get; set; } = string.Empty; // Path, magnet, or hash
+        public string TorrentIdentifier { get; set; } = string.Empty;
         public string DatFilePath { get; set; } = string.Empty;
-        public string? SpoolingTargetOverride { get; set; } // Null falls back to global default
+        public string? SpoolingTargetOverride { get; set; }
+        public string? ServerProfileOverride { get; set; } // Null falls back to DefaultServerProfile
         public SpoolingStrategy Strategy { get; set; } = SpoolingStrategy.MoveFiles;
         public string FileFilter { get; set; } = "*.*";
     }

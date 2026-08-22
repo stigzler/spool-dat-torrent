@@ -3,6 +3,7 @@ using SpoolDatTorrent.Core.DTOs;
 using SpoolDatTorrent.Core.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 
@@ -12,32 +13,51 @@ namespace SpoolDatTorrent.Core.Services
     {
         private readonly HttpClient _httpClient;
         private readonly GlobalSpoolSettings _settings;
+        private readonly TorrentServerProfile _profile;
         private string? _cookie;
+        private readonly bool _useApiKey;
 
-        public QBitClient(HttpClient httpClient, GlobalSpoolSettings settings)
+        public QBitClient(HttpClient httpClient, GlobalSpoolSettings settings, TorrentServerProfile profile)
         {
             _httpClient = httpClient;
             _settings = settings;
+            _profile = profile;
 
-            if (_httpClient.BaseAddress == null && !string.IsNullOrEmpty(_settings.TorrentClientHost))
+            if (_httpClient.BaseAddress == null && !string.IsNullOrEmpty(_profile.Host))
             {
-                _httpClient.BaseAddress = new Uri(_settings.TorrentClientHost);
+                _httpClient.BaseAddress = new Uri(_profile.Host);
+            }
+
+            // Check if we are using the modern API Key auth
+            if (!string.IsNullOrWhiteSpace(_profile.ApiKey))
+            {
+                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _profile.ApiKey);
+                _useApiKey = true;
             }
         }
-
         public async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
         {
-            // qBittorrent Web API login endpoint
+            // If using the API key, ping a lightweight endpoint to verify the key is actually valid
+            if (_useApiKey)
+            {
+                var request = new HttpRequestMessage(HttpMethod.Get, "/api/v2/app/version");
+                var response = await _httpClient.SendAsync(request, cancellationToken);
+
+                // If we get a 200 OK, the API key works. If we get a 403 Forbidden, it's invalid.
+                return response.IsSuccessStatusCode;
+            }
+
+            // Fallback for older cookie-based authentication
             var content = new FormUrlEncodedContent(new[]
             {
-                new KeyValuePair<string, string>("username", "admin"), // Can be mapped to settings if needed
-                new KeyValuePair<string, string>("password", _settings.TorrentClientApiKey)
+                new KeyValuePair<string, string>("username", _profile.Username),
+                new KeyValuePair<string, string>("password", _profile.Password)
             });
 
-            var response = await _httpClient.PostAsync("/api/v2/auth/login", content, cancellationToken);
-            if (response.IsSuccessStatusCode)
+            var authResponse = await _httpClient.PostAsync("/api/v2/auth/login", content, cancellationToken);
+            if (authResponse.IsSuccessStatusCode)
             {
-                if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+                if (authResponse.Headers.TryGetValues("Set-Cookie", out var cookies))
                 {
                     _cookie = string.Join("; ", cookies);
                 }
@@ -141,7 +161,8 @@ namespace SpoolDatTorrent.Core.Services
         }
         private void AddAuthHeader(HttpRequestMessage request)
         {
-            if (!string.IsNullOrEmpty(_cookie))
+            // Only add the cookie if we aren't using the API Key
+            if (!_useApiKey && !string.IsNullOrEmpty(_cookie))
             {
                 request.Headers.Add("Cookie", _cookie);
             }

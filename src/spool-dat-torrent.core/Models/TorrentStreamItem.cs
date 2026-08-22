@@ -16,7 +16,7 @@ namespace SpoolDatTorrent.Core.Models
         public string FileFilter { get; set; } = "*.*";
         public StreamLifecycleStatus Status { get; set; } = StreamLifecycleStatus.Active;
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
-
         public List<TorrentFileItem> Files { get; set; } = new();
+        public string ServerProfileId { get; set; } = string.Empty;
     }
 }
