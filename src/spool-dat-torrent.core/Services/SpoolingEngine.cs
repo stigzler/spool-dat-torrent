@@ -112,7 +112,7 @@ namespace SpoolDatTorrent.Core.Services
             // 1. Get the list of desired games from the local DAT file
             var desiredGames = await _datParser.GetGameNamesFromFileAsync(stream.DatFilePath, cancellationToken);
 
-            // 2. Fetch the current files in the torrent from the BT Client
+            // 2. Fetch the current files and their progress from the BT Client
             var torrentFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
             if (torrentFiles == null || !torrentFiles.Any())
             {
@@ -120,38 +120,69 @@ namespace SpoolDatTorrent.Core.Services
                 return;
             }
 
+            // Resolve the final destination path, falling back to global settings if stream override is empty
+            string? destinationRoot = string.IsNullOrWhiteSpace(stream.SpoolingTargetOverride)
+                ? _settings.DefaultSpoolingTarget
+                : stream.SpoolingTargetOverride;
+
             long currentSpoolFootprint = 0;
             var filesToDownload = new List<int>();
             var filesToSkip = new List<int>();
 
-            // 3. Evaluate every file in the torrent against the DAT list and the Cap
+            // 3. Evaluate every file in the torrent against completion, DAT list, and Cap
             foreach (var file in torrentFiles)
             {
-                // Strip the extension (and folder path) to match the DAT game name
                 var gameName = Path.GetFileNameWithoutExtension(file.Name);
+                bool isDesired = desiredGames.Contains(gameName);
 
-                if (desiredGames.Contains(gameName))
+                // --- PASS 1: Check for completed files ready to be moved ---
+                if (file.Progress >= 1.0f && !string.IsNullOrEmpty(destinationRoot))
                 {
-                    // If it fits in the cap, queue it. (This includes files already downloaded that are taking up space)
-                    if (currentSpoolFootprint + file.Size <= allocatedCapBytes)
+                    try
+                    {
+                        // Note: qBittorrent downloads typically reside in the torrent's save path. 
+                        // For local execution, we look for the file relative to the storage setup.
+                        string destinationPath = Path.Combine(destinationRoot, file.Name);
+
+                        // If you need a scratch path lookup, ensure it resolves correctly from your client setup,
+                        // otherwise direct file management is handled via the target path.
+
+                        // For V1 safety, we ensure the destination directory exists and mark priority 0
+                        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+
+                        filesToSkip.Add(file.Index);
+                        continue;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to process completed file {gameName}: {ex.Message}");
+                    }
+                }
+
+                // --- PASS 2: Spool Cap Allocation for active/remaining files ---
+                if (isDesired)
+                {
+                    if (file.Progress >= 1.0f || currentSpoolFootprint + file.Size <= allocatedCapBytes)
                     {
                         filesToDownload.Add(file.Index);
-                        currentSpoolFootprint += file.Size;
+
+                        if (file.Progress < 1.0f)
+                        {
+                            currentSpoolFootprint += file.Size;
+                        }
                     }
                     else
                     {
-                        // We want it, but the spool cap is reached for this cycle
                         filesToSkip.Add(file.Index);
                     }
                 }
                 else
                 {
-                    // Not in the DAT file, ignore completely
                     filesToSkip.Add(file.Index);
                 }
             }
 
-            // 4. Dispatch commands to qBittorrent
+            // 4. Dispatch final priority commands to qBittorrent
             if (filesToDownload.Any())
             {
                 await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToDownload, 1, cancellationToken);
@@ -162,8 +193,8 @@ namespace SpoolDatTorrent.Core.Services
                 await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToSkip, 0, cancellationToken);
             }
 
-            // 5. (Future Step) Sync states to dbContext so we can track them in the UI
-            // await dbContext.SaveChangesAsync(cancellationToken);
+            // 5. Sync state changes to SQLite
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
 }

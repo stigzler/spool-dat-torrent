@@ -12,11 +12,10 @@ namespace SpoolDatTorrent.Core.Services
     public class QBitClient : IBitTorrentClient
     {
         private readonly HttpClient _httpClient;
-        private readonly GlobalSpoolSettings _settings;
         private readonly TorrentServerProfile _profile;
-        private string? _cookie;
+        private readonly GlobalSpoolSettings _settings;
         private readonly bool _useApiKey;
-
+        private string? _cookie;
         public QBitClient(HttpClient httpClient, GlobalSpoolSettings settings, TorrentServerProfile profile)
         {
             _httpClient = httpClient;
@@ -35,6 +34,38 @@ namespace SpoolDatTorrent.Core.Services
                 _useApiKey = true;
             }
         }
+        public async Task AddTorrentAsync(string torrentPathOrMagnet, string? savePath = null, CancellationToken cancellationToken = default)
+        {
+            using var content = new MultipartFormDataContent();
+
+            // Check if it's a physical .torrent file
+            if (File.Exists(torrentPathOrMagnet) && torrentPathOrMagnet.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
+            {
+                var fileBytes = await File.ReadAllBytesAsync(torrentPathOrMagnet, cancellationToken);
+                var fileContent = new ByteArrayContent(fileBytes);
+                content.Add(fileContent, "torrents", Path.GetFileName(torrentPathOrMagnet));
+            }
+            else // Otherwise, treat it as a Magnet link or URL
+            {
+                content.Add(new StringContent(torrentPathOrMagnet), "urls");
+            }
+
+            if (!string.IsNullOrEmpty(savePath))
+            {
+                content.Add(new StringContent(savePath), "savepath");
+            }
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/add")
+            {
+                Content = content
+            };
+
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+        }
+
         public async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
         {
             // If using the API key, ping a lightweight endpoint to verify the key is actually valid
@@ -149,10 +180,10 @@ namespace SpoolDatTorrent.Core.Services
             var idList = string.Join("|", fileIndices);
             var content = new FormUrlEncodedContent(new[]
             {
-        new KeyValuePair<string, string>("hash", torrentId),
-        new KeyValuePair<string, string>("file_ids", idList),
-        new KeyValuePair<string, string>("priority", priority.ToString())
-    });
+                new KeyValuePair<string, string>("hash", torrentId),
+                new KeyValuePair<string, string>("id", idList),
+                new KeyValuePair<string, string>("priority", priority.ToString())
+            });
 
             var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/filePrio") { Content = content };
             AddAuthHeader(request);

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "spool-dat-torrent.cli": {
+      "commandName": "Project",
+      "commandLineArgs": "-t \"C:\\temp\\project tests\\SpoolDatTorrent\\Minerva_Myrient - Redump - Sony - PlayStation.torrent\" -d \"C:\\temp\\project tests\\SpoolDatTorrent\\Sony - PlayStation (2026-06-15 11-55-46) (Retool 2026-08-22 23-06-45) (4,381) [-AaBbcDdekmMopPrv].dat\" -n \"PS1 Full Test\" --target \"C:\\temp\\project tests\\SpoolDatTorrent\\Spooled Output\" -c 1 --strategy Pause -f \"*USA*\" --client-host \"http://localhost:8080\" --client-key \"qbt_4htwNXNVdgwaKpC92Z3UNAyGrwxV\""
+    }
+  }
+}
