@@ -48,6 +48,7 @@ namespace SpoolDatTorrent.Core.Tests
             public Task RecheckTorrentAsync(string torrentId, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task<string> GetTorrentSavePathAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult(SavePath);
             public Task<string> GetTorrentNameAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult("Test Torrent");
+            public Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult(true);
             public Task SetFilePrioritiesAsync(string torrentId, IEnumerable<int> fileIndices, int priority, CancellationToken cancellationToken = default)
             {
                 foreach (var index in fileIndices)

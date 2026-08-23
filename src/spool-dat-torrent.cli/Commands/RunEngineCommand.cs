@@ -60,12 +60,47 @@ namespace SpoolDatTorrent.Cli.Commands
             // 3. Extract Hash & Seed DB
             string calculatedHash = TorrentMetadataHelper.GetInfoHash(settings.Torrent!);
 
+            // 3a. "Start fresh": remove the torrent from the client (and its scratch files)
+            //     and clear the saved stream, so the next run re-adds from scratch. Files
+            //     already moved to the destination are KEPT (the engine re-detects them on
+            //     disk and skips re-downloading them).
+            if (settings.Fresh)
+            {
+                AnsiConsole.MarkupLine("[yellow]Starting fresh: removing torrent from client and clearing saved state...[/]");
+
+                var clientFactory = serviceProvider.GetRequiredService<IBitTorrentClientFactory>();
+                var freshClient = clientFactory.GetClient("LocalQBit");
+
+                try
+                {
+                    await freshClient.AuthenticateAsync(cancellationToken);
+                    await freshClient.DeleteTorrentAsync(calculatedHash, deleteFiles: true, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[yellow]Warning:[/] Could not remove torrent from client: {Markup.Escape(ex.Message)}");
+                }
+
+                using (var freshScope = serviceProvider.CreateScope())
+                {
+                    var freshDb = freshScope.ServiceProvider.GetRequiredService<SpoolDbContext>();
+                    var toDelete = await freshDb.Streams.FirstOrDefaultAsync(s => s.TorrentIdentifier == calculatedHash, cancellationToken);
+                    if (toDelete != null)
+                    {
+                        freshDb.Streams.Remove(toDelete);
+                        await freshDb.SaveChangesAsync(cancellationToken);
+                    }
+                }
+            }
+
             using (var scope = serviceProvider.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
                 await db.Database.EnsureCreatedAsync(cancellationToken);
 
-                if (!db.Streams.Any(s => s.TorrentIdentifier == calculatedHash))
+                var existingStream = await db.Streams.FirstOrDefaultAsync(s => s.TorrentIdentifier == calculatedHash, cancellationToken);
+
+                if (existingStream == null)
                 {
                     var newStream = new TorrentStreamItem
                     {
@@ -109,20 +144,34 @@ namespace SpoolDatTorrent.Cli.Commands
                     db.Streams.Add(newStream);
                     await db.SaveChangesAsync(cancellationToken);
                 }
+                else
+                {
+                    // Stream already exists: refresh its mutable fields so the latest CLI
+                    // args win (otherwise a stale --target from a previous run persists).
+                    existingStream.Name = settings.Name ?? existingStream.Name;
+                    existingStream.DatFilePath = settings.DatPath!;
+                    existingStream.SpoolingTargetOverride = settings.TargetOverride;
+                    existingStream.Status = StreamLifecycleStatus.Active;
+
+                    if (!string.IsNullOrWhiteSpace(settings.Filter))
+                    {
+                        existingStream.FileFilter = settings.Filter;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(settings.Strategy) &&
+                        Enum.TryParse<SpoolingStrategy>(settings.Strategy, ignoreCase: true, out var parsedStrategy))
+                    {
+                        existingStream.Strategy = parsedStrategy;
+                    }
+
+                    await db.SaveChangesAsync(cancellationToken);
+                }
             }
 
-            // 4. Inject Torrent to qBittorrent
-            AnsiConsole.MarkupLine("[dim]Injecting torrent into qBittorrent...[/]");
-            var clientFactory = serviceProvider.GetRequiredService<IBitTorrentClientFactory>();
-            var qbitClient = clientFactory.GetClient("LocalQBit");
-
-            await qbitClient.AuthenticateAsync(cancellationToken);
-            await qbitClient.AddTorrentAsync(settings.Torrent!, null, addPaused: true, cancellationToken);
-
-            AnsiConsole.MarkupLine("[dim]Waiting 5 seconds for qBittorrent to parse the file tree...[/]");
-            await Task.Delay(5000, cancellationToken);
-
-            // 5. Execute Engine continuously
+            // 4. Execute Engine continuously. The engine is responsible for adding the
+            //    torrent (via its recovery path) and for all client interaction, so a
+            //    down/unreachable qBittorrent is handled gracefully in Core rather than
+            //    crashing the CLI.
             AnsiConsole.MarkupLine("[cyan]Starting continuous SpoolDatTorrent evaluation loop. Press Ctrl+C to stop...[/]");
             var engine = serviceProvider.GetRequiredService<SpoolingEngine>();
 

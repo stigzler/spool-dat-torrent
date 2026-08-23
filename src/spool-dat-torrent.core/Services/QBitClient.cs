@@ -283,7 +283,7 @@ namespace SpoolDatTorrent.Core.Services
             Console.WriteLine($"[Warning] Torrent '{torrentId}' still present after 60s; re-add may conflict.");
         }
 
-        private async Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default)
+        public async Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");
             AddAuthHeader(request);

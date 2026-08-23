@@ -12,6 +12,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using static SpoolDatTorrent.Core.Helpers.Logger;
 
@@ -77,14 +78,35 @@ namespace SpoolDatTorrent.Core.Services
                 long serverCapBytes = profileSettings.SpoolingCapGb * 1024L * 1024L * 1024L;
                 long capPerStream = serverCapBytes / streamsOnThisServer.Count;
 
+                // Apply the safety margin: reserve a percentage of the cap for BitTorrent
+                // "boundary piece" overhead (the transient .parts file). Without this, a
+                // batch can exceed the cap because libtorrent downloads whole pieces that
+                // straddle selected/skipped file boundaries.
+                capPerStream = ApplySafetyMargin(capPerStream);
+
                 // Get the authenticated client for this specific server
                 var torrentClient = _clientFactory.GetClient(profileName);
-                await torrentClient.AuthenticateAsync(cancellationToken);
 
-                // Process each stream on this server
-                foreach (var stream in streamsOnThisServer)
+                try
                 {
-                    await ProcessStreamAsync(stream, capPerStream, profileSettings, torrentClient, dbContext, cancellationToken);
+                    await torrentClient.AuthenticateAsync(cancellationToken);
+
+                    // Process each stream on this server
+                    foreach (var stream in streamsOnThisServer)
+                    {
+                        await ProcessStreamAsync(stream, capPerStream, profileSettings, torrentClient, dbContext, cancellationToken);
+                    }
+                }
+                catch (HttpRequestException ex)
+                {
+                    // Client unreachable (e.g. qBittorrent is down). Log and retry next cycle
+                    // rather than crashing the host (CLI, Docker service, or desktop app).
+                    Logger.Log($"[Warning] BitTorrent client '{profileName}' unreachable: {ex.Message}. Will retry next cycle.", echoToConsole: true);
+                }
+                catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // Client timed out. Same treatment: log and retry next cycle.
+                    Logger.Log($"[Warning] BitTorrent client '{profileName}' timed out. Will retry next cycle.", echoToConsole: true);
                 }
             }
         }
@@ -172,22 +194,30 @@ namespace SpoolDatTorrent.Core.Services
                             CancellationToken cancellationToken)
         {
             var desiredGames = await GetDesiredGamesAsync(stream.DatFilePath, cancellationToken);
+
+            // RECOVERY: if the torrent is missing from the client (e.g. the app was closed
+            // mid-rebuild, after delete but before re-add), re-add it and re-allocate so we
+            // pick up where we left off. Already-moved files are detected by their presence
+            // on disk, so nothing is re-downloaded.
+            if (!await torrentClient.TorrentExistsAsync(stream.TorrentIdentifier, cancellationToken))
+            {
+                await RecoverMissingTorrentAsync(stream, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                return;
+            }
+
             string torrentSavePath = await torrentClient.GetTorrentSavePathAsync(stream.TorrentIdentifier, cancellationToken);
             string torrentName = await torrentClient.GetTorrentNameAsync(stream.TorrentIdentifier, cancellationToken);
             var torrentFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
 
             if (torrentFiles == null || !torrentFiles.Any()) return;
 
-            // Destination root: [base]/[stream name]/[torrent name] to avoid filename
-            // collisions across servers/torrents. Relative subfolder structure within the
-            // torrent is preserved to avoid intra-torrent collisions.
-            string baseRoot = string.IsNullOrWhiteSpace(stream.SpoolingTargetOverride)
-                ? _settings.DefaultSpoolingTarget
-                : stream.SpoolingTargetOverride;
-            string destinationRoot = Path.Combine(
-                baseRoot,
-                SanitizeFolderName(stream.Name),
-                SanitizeFolderName(string.IsNullOrWhiteSpace(torrentName) ? stream.TorrentIdentifier : torrentName));
+            // Destination root resolution:
+            //   - Explicit per-stream target (SpoolingTargetOverride): files go directly
+            //     into it (no torrent-name subfolder).
+            //   - Otherwise: [DefaultSpoolingTarget]/[torrent name].
+            // The torrent's internal subfolder structure is preserved in both cases.
+            string destinationRoot = GetDestinationRoot(stream, torrentName);
+            string prefixToStrip = GetPrefixToStrip(stream, torrentName, torrentFiles);
 
             // Only consider files that the DAT actually wants
             var desiredFiles = torrentFiles
@@ -201,7 +231,7 @@ namespace SpoolDatTorrent.Core.Services
 
             foreach (var file in desiredFiles)
             {
-                string destPath = GetDestinationPath(destinationRoot, file.Name);
+                string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
                 bool isSpooled = File.Exists(destPath) && new FileInfo(destPath).Length == file.Size;
 
                 if (isSpooled)
@@ -249,7 +279,7 @@ namespace SpoolDatTorrent.Core.Services
 
                 foreach (var file in readyToMove)
                 {
-                    string destinationPath = GetDestinationPath(destinationRoot, file.Name);
+                    string destinationPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
                     string sourcePath = TranslateToLocalPath(torrentSavePath, file.Name, profileSettings);
 
                     Logger.Log($"[Spooling] Attempting copy: {file.Name}...", echoToConsole: true);
@@ -303,10 +333,140 @@ namespace SpoolDatTorrent.Core.Services
             return string.IsNullOrWhiteSpace(sanitized) ? "stream" : sanitized;
         }
 
-        private static string GetDestinationPath(string destinationRoot, string fileRelativeName)
+        private string GetDestinationRoot(TorrentStreamItem stream, string torrentName)
         {
-            // Preserve the torrent's internal subfolder structure to avoid filename collisions
-            return Path.Combine(destinationRoot, fileRelativeName.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar));
+            // Explicit per-stream target: files go directly into it (no torrent-name subfolder).
+            if (!string.IsNullOrWhiteSpace(stream.SpoolingTargetOverride))
+            {
+                return stream.SpoolingTargetOverride;
+            }
+
+            // Automated: [DefaultSpoolingTarget]/[torrent name].
+            // Fall back to the info-hash if the torrent name is unavailable.
+            string torrentFolder = string.IsNullOrWhiteSpace(torrentName)
+                ? stream.TorrentIdentifier
+                : torrentName;
+
+            return Path.Combine(_settings.DefaultSpoolingTarget, SanitizeFolderName(torrentFolder));
+        }
+
+        private static string GetDestinationPath(string destinationRoot, string prefixToStrip, string fileRelativeName)
+        {
+            return Path.Combine(destinationRoot, StripPrefix(fileRelativeName, prefixToStrip));
+        }
+
+        private static string StripPrefix(string fileRelativeName, string prefixToStrip)
+        {
+            string relative = fileRelativeName.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+
+            // An empty prefix means "no common root" (files scattered across unrelated
+            // top-level folders). In that case we do NOT flatten: we return the full
+            // relative path so the torrent's own structure is mirrored under the target.
+            if (string.IsNullOrWhiteSpace(prefixToStrip))
+            {
+                return relative;
+            }
+
+            var prefixSegments = prefixToStrip.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
+            var segments = relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            if (segments.Count > prefixSegments.Length)
+            {
+                bool matches = true;
+                for (int i = 0; i < prefixSegments.Length; i++)
+                {
+                    if (!string.Equals(segments[i], prefixSegments[i], StringComparison.OrdinalIgnoreCase))
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (matches)
+                {
+                    segments.RemoveRange(0, prefixSegments.Length);
+                    return string.Join(Path.DirectorySeparatorChar, segments);
+                }
+            }
+
+            return relative;
+        }
+
+        private static string GetCommonRootDirectory(IReadOnlyList<TorrentFileDto> files)
+        {
+            // Compute the deepest directory prefix shared by all files in the torrent.
+            // This is the "common root" stripped when an explicit target is given, so files
+            // land directly in the target while preserving any subfolders that exist below
+            // that common root (e.g. ".../Aftermarket/...").
+            var dirSegments = files
+                .Select(f => GetDirectorySegments(f.Name))
+                .ToList();
+
+            if (dirSegments.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var first = dirSegments[0];
+            int commonCount = first.Count;
+
+            foreach (var segs in dirSegments.Skip(1))
+            {
+                int i = 0;
+                while (i < commonCount && i < segs.Count && string.Equals(first[i], segs[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    i++;
+                }
+                commonCount = i;
+                if (commonCount == 0) break;
+            }
+
+            return string.Join(Path.DirectorySeparatorChar, first.Take(commonCount));
+        }
+
+        private static List<string> GetDirectorySegments(string filePath)
+        {
+            var normalized = filePath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            var segments = normalized.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            // Drop the filename (last segment) so we only compare directory structure.
+            if (segments.Count > 0)
+            {
+                segments.RemoveAt(segments.Count - 1);
+            }
+
+            return segments;
+        }
+
+        private string GetPrefixToStrip(TorrentStreamItem stream, string torrentName, IReadOnlyList<TorrentFileDto> files)
+        {
+            // Explicit target: strip the common root directory so files land directly in
+            // the target, preserving only subfolders below that common root.
+            if (!string.IsNullOrWhiteSpace(stream.SpoolingTargetOverride))
+            {
+                return GetCommonRootDirectory(files);
+            }
+
+            // Automated: strip only the torrent name (first segment) to avoid duplicating
+            // it with the [torrent name] folder in the destination root.
+            return torrentName;
+        }
+
+        private long ApplySafetyMargin(long capBytes)
+        {
+            // Reserve a percentage of the cap for BitTorrent "boundary piece" overhead.
+            // When a selected file shares a piece with a skipped file, libtorrent downloads
+            // the whole piece and writes the skipped portion to a transient ".parts" file.
+            // That data is real disk usage not counted in the selected files' sizes, so we
+            // shrink the effective cap to leave headroom for it.
+            double margin = _settings.SpoolingCapSafetyMarginPercent;
+
+            // Clamp to a sane range (0% - 50%) to guard against misconfiguration.
+            if (margin < 0) margin = 0;
+            if (margin > 50) margin = 50;
+
+            double factor = 1.0 - (margin / 100.0);
+            return (long)(capBytes * factor);
         }
 
         private async Task<HashSet<string>> GetDesiredGamesAsync(string datFilePath, CancellationToken cancellationToken)
@@ -420,17 +580,70 @@ namespace SpoolDatTorrent.Core.Services
             }
 
             var alreadyMoved = new List<TorrentFileDto>();
-            string baseRoot = string.IsNullOrWhiteSpace(stream.SpoolingTargetOverride)
-                ? _settings.DefaultSpoolingTarget
-                : stream.SpoolingTargetOverride;
-            string destinationRoot = Path.Combine(
-                baseRoot,
-                SanitizeFolderName(stream.Name),
-                SanitizeFolderName(string.IsNullOrWhiteSpace(torrentName) ? stream.TorrentIdentifier : torrentName));
+            string destinationRoot = GetDestinationRoot(stream, torrentName);
+            string prefixToStrip = GetPrefixToStrip(stream, torrentName, freshFiles);
 
             foreach (var file in freshFiles)
             {
-                string destPath = GetDestinationPath(destinationRoot, file.Name);
+                string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
+                if (File.Exists(destPath) && new FileInfo(destPath).Length == file.Size)
+                {
+                    alreadyMoved.Add(file);
+                }
+            }
+
+            await AllocateBatchAsync(stream, freshFiles, desiredGames, alreadyMoved, allocatedCapBytes, torrentClient, cancellationToken);
+        }
+
+        private async Task RecoverMissingTorrentAsync(
+            TorrentStreamItem stream,
+            HashSet<string> desiredGames,
+            long allocatedCapBytes,
+            IBitTorrentClient torrentClient,
+            CancellationToken cancellationToken)
+        {
+            string? source = !string.IsNullOrWhiteSpace(stream.OriginalTorrentPath)
+                ? stream.OriginalTorrentPath
+                : stream.OriginalMagnet;
+
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                Logger.Log($"[Error] Cannot recover torrent: no original .torrent path or magnet stored for stream '{stream.Name}'.", echoToConsole: true);
+                return;
+            }
+
+            Logger.Log($"[Spooling] Torrent missing from client; re-adding to resume stream '{stream.Name}'...", echoToConsole: true);
+
+            // Re-add paused. We don't know the original save path, so let qBittorrent use
+            // its default (or the profile's configured location).
+            await torrentClient.AddTorrentAsync(source, savePath: null, addPaused: true, cancellationToken);
+
+            // Poll until the file tree is available.
+            IReadOnlyList<TorrentFileDto>? freshFiles = null;
+            for (int i = 0; i < 60; i++)
+            {
+                await Task.Delay(500, cancellationToken);
+                freshFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
+                if (freshFiles != null && freshFiles.Count > 0)
+                {
+                    break;
+                }
+            }
+
+            if (freshFiles == null || freshFiles.Count == 0)
+            {
+                Logger.Log($"[Error] Torrent re-added but file list never became available for '{stream.Name}'.", echoToConsole: true);
+                return;
+            }
+
+            string torrentName = await torrentClient.GetTorrentNameAsync(stream.TorrentIdentifier, cancellationToken);
+            string destinationRoot = GetDestinationRoot(stream, torrentName);
+            string prefixToStrip = GetPrefixToStrip(stream, torrentName, freshFiles);
+
+            var alreadyMoved = new List<TorrentFileDto>();
+            foreach (var file in freshFiles)
+            {
+                string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
                 if (File.Exists(destPath) && new FileInfo(destPath).Length == file.Size)
                 {
                     alreadyMoved.Add(file);

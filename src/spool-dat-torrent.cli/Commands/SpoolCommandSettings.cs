@@ -15,15 +15,15 @@ namespace SpoolDatTorrent.Cli.Commands
         public string? DatPath { get; set; }
 
         [CommandOption("-n|--name <NAME>")]
-        [Description("A friendly stream display name")]
+        [Description("A friendly display name for the stream (used in logs/UI only; not part of the output path)")]
         public string? Name { get; set; }
 
         [CommandOption("--target <PATH>")]
-        [Description("Custom spooling destination directory to override global default")]
+        [Description("Destination folder. Files are placed directly into it (the torrent's shared root folder is stripped), preserving any subfolders below that root. Overrides the global default.")]
         public string? TargetOverride { get; set; }
 
         [CommandOption("-c|--cap <GIGABYTES>")]
-        [Description("Override the spooling cap in GB for this specific stream test")]
+        [Description("Override the spooling cap in GB for this run. A safety margin (see SpoolingCapSafetyMarginPercent) is reserved for BitTorrent boundary-piece overhead.")]
         public int? CapOverride { get; set; }
 
         [CommandOption("--strategy <STRATEGY>")]
@@ -41,6 +41,10 @@ namespace SpoolDatTorrent.Cli.Commands
         [CommandOption("--client-key <KEY>")]
         [Description("Override the BitTorrent client API key")]
         public string? ClientKey { get; set; }
+
+        [CommandOption("--fresh")]
+        [Description("Start fresh: clear saved state and remove the torrent from the client, but keep files already moved to the destination")]
+        public bool Fresh { get; set; }
 
         public override ValidationResult Validate()
         {
