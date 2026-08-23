@@ -269,14 +269,18 @@ namespace SpoolDatTorrent.Core.Services
 
             // qBittorrent removes the torrent asynchronously. Poll until it is actually
             // gone so a subsequent re-add of the same info-hash doesn't hit a 409 Conflict.
-            for (int i = 0; i < 20; i++)
+            // Large torrents (multi-TB) can take a while to delete their files, so allow a
+            // generous window (60s) before giving up.
+            for (int i = 0; i < 60; i++)
             {
                 if (!await TorrentExistsAsync(torrentId, cancellationToken))
                 {
                     return;
                 }
-                await Task.Delay(250, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
             }
+
+            Console.WriteLine($"[Warning] Torrent '{torrentId}' still present after 60s; re-add may conflict.");
         }
 
         private async Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default)

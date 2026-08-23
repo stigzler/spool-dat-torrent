@@ -9,6 +9,7 @@ using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Interfaces;
 using SpoolDatTorrent.Core.Models;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -22,6 +23,9 @@ namespace SpoolDatTorrent.Core.Services
         private readonly IDatParserService _datParser;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly GlobalSpoolSettings _settings;
+
+        // Cache the DAT game names per stream so we don't re-parse the XML on every poll.
+        private readonly ConcurrentDictionary<string, HashSet<string>> _datCache = new(StringComparer.OrdinalIgnoreCase);
 
         public SpoolingEngine(
             IServiceScopeFactory scopeFactory,
@@ -167,7 +171,7 @@ namespace SpoolDatTorrent.Core.Services
                             SpoolDbContext dbContext,
                             CancellationToken cancellationToken)
         {
-            var desiredGames = await _datParser.GetGameNamesFromFileAsync(stream.DatFilePath, cancellationToken);
+            var desiredGames = await GetDesiredGamesAsync(stream.DatFilePath, cancellationToken);
             string torrentSavePath = await torrentClient.GetTorrentSavePathAsync(stream.TorrentIdentifier, cancellationToken);
             string torrentName = await torrentClient.GetTorrentNameAsync(stream.TorrentIdentifier, cancellationToken);
             var torrentFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
@@ -239,7 +243,7 @@ namespace SpoolDatTorrent.Core.Services
             {
                 Logger.Log($"[Spooling] Halting torrent to copy {readyToMove.Count} completed files...", echoToConsole: true);
                 await torrentClient.PauseTorrentAsync(stream.TorrentIdentifier, cancellationToken);
-                await Task.Delay(3000, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
 
                 var copiedIndices = new List<int>();
 
@@ -264,7 +268,7 @@ namespace SpoolDatTorrent.Core.Services
                 if (copiedIndices.Any())
                 {
                     Logger.Log($"[Spooling] Copied {copiedIndices.Count} files. Rebuilding torrent for next batch...", echoToConsole: true);
-                    await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                    await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
                 }
                 else
                 {
@@ -303,6 +307,18 @@ namespace SpoolDatTorrent.Core.Services
         {
             // Preserve the torrent's internal subfolder structure to avoid filename collisions
             return Path.Combine(destinationRoot, fileRelativeName.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar));
+        }
+
+        private async Task<HashSet<string>> GetDesiredGamesAsync(string datFilePath, CancellationToken cancellationToken)
+        {
+            if (_datCache.TryGetValue(datFilePath, out var cached))
+            {
+                return cached;
+            }
+
+            var games = await _datParser.GetGameNamesFromFileAsync(datFilePath, cancellationToken);
+            _datCache[datFilePath] = games;
+            return games;
         }
 
         private async Task AllocateBatchAsync(
@@ -355,6 +371,8 @@ namespace SpoolDatTorrent.Core.Services
             TorrentStreamItem stream,
             string torrentSavePath,
             string torrentName,
+            IReadOnlyList<TorrentFileDto> torrentFiles,
+            TorrentServerProfile profileSettings,
             HashSet<string> desiredGames,
             long allocatedCapBytes,
             IBitTorrentClient torrentClient,
@@ -362,8 +380,12 @@ namespace SpoolDatTorrent.Core.Services
         {
             // 1. Delete the whole torrent AND its downloaded data. This is safe because we
             //    have already copied every completed file to its final destination.
-            //    (DeleteTorrentAsync polls internally until the torrent is actually gone.)
             await torrentClient.DeleteTorrentAsync(stream.TorrentIdentifier, deleteFiles: true, cancellationToken);
+
+            // 1b. qBittorrent deletes files asynchronously. Wait until the scratch files are
+            //     actually gone from disk before re-adding, otherwise the re-add finds stale
+            //     files and triggers a slow hash check ("checking" phase).
+            await WaitForScratchFilesDeletedAsync(torrentSavePath, torrentFiles, profileSettings, cancellationToken);
 
             // 2. Re-add the SAME torrent source (same info-hash => same swarm), paused.
             string? source = !string.IsNullOrWhiteSpace(stream.OriginalTorrentPath)
@@ -378,12 +400,24 @@ namespace SpoolDatTorrent.Core.Services
 
             await torrentClient.AddTorrentAsync(source, torrentSavePath, addPaused: true, cancellationToken);
 
-            // 3. Wait for qBittorrent to parse the file tree before setting priorities
-            await Task.Delay(5000, cancellationToken);
+            // 3. Poll until qBittorrent has parsed the file tree (metadata ready) instead of
+            //    a fixed delay. This is faster for small torrents and safer for huge ones.
+            IReadOnlyList<TorrentFileDto>? freshFiles = null;
+            for (int i = 0; i < 60; i++)
+            {
+                await Task.Delay(500, cancellationToken);
+                freshFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
+                if (freshFiles != null && freshFiles.Count > 0)
+                {
+                    break;
+                }
+            }
 
-            // 4. Re-fetch the fresh file list and allocate the next batch
-            var freshFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
-            if (freshFiles == null || !freshFiles.Any()) return;
+            if (freshFiles == null || freshFiles.Count == 0)
+            {
+                Logger.Log($"[Error] Torrent re-added but file list never became available for '{stream.Name}'.", echoToConsole: true);
+                return;
+            }
 
             var alreadyMoved = new List<TorrentFileDto>();
             string baseRoot = string.IsNullOrWhiteSpace(stream.SpoolingTargetOverride)
@@ -404,6 +438,36 @@ namespace SpoolDatTorrent.Core.Services
             }
 
             await AllocateBatchAsync(stream, freshFiles, desiredGames, alreadyMoved, allocatedCapBytes, torrentClient, cancellationToken);
+        }
+
+        private async Task WaitForScratchFilesDeletedAsync(
+            string torrentSavePath,
+            IReadOnlyList<TorrentFileDto> torrentFiles,
+            TorrentServerProfile profileSettings,
+            CancellationToken cancellationToken)
+        {
+            // The files we care about are the ones that were actually downloaded (progress >= 1).
+            // We wait until none of them exist on the scratch drive anymore.
+            var downloadedPaths = torrentFiles
+                .Where(f => f.Progress >= 1.0f)
+                .Select(f => TranslateToLocalPath(torrentSavePath, f.Name, profileSettings))
+                .ToList();
+
+            if (downloadedPaths.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < 60; i++)
+            {
+                if (downloadedPaths.All(p => !File.Exists(p)))
+                {
+                    return;
+                }
+                await Task.Delay(1000, cancellationToken);
+            }
+
+            Logger.Log("[Warning] Scratch files still present after 60s; re-add may trigger a hash check.", echoToConsole: true);
         }
     }
 }
