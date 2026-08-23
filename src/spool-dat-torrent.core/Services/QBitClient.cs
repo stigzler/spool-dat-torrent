@@ -34,11 +34,43 @@ namespace SpoolDatTorrent.Core.Services
                 _useApiKey = true;
             }
         }
-        public async Task AddTorrentAsync(string torrentPathOrMagnet, string? savePath = null, CancellationToken cancellationToken = default)
+
+        public async Task<string> GetTorrentSavePathAsync(string torrentId, CancellationToken cancellationToken = default)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+
+            // Dynamically parse the save_path without needing a dedicated DTO
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            var root = document.RootElement;
+
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Array && root.GetArrayLength() > 0)
+            {
+                if (root[0].TryGetProperty("save_path", out var savePathElement))
+                {
+                    return savePathElement.GetString() ?? string.Empty;
+                }
+            }
+            return string.Empty;
+        }
+
+        public async Task AddTorrentAsync(string torrentPathOrMagnet, string? savePath = null, bool addPaused = true, CancellationToken cancellationToken = default)
         {
             using var content = new MultipartFormDataContent();
 
-            // Check if it's a physical .torrent file
+            // 1. ADD SETTINGS FIRST (qBittorrent ignores them if the file is parsed first)
+            if (!string.IsNullOrEmpty(savePath))
+            {
+                content.Add(new StringContent(savePath), "savepath");
+            }
+
+            // Send both paused and stopped to ensure compatibility across qB 4.x and 5.x
+            content.Add(new StringContent(addPaused ? "true" : "false"), "stopped");
+
+            // 2. ADD FILE/URL SECOND
             if (File.Exists(torrentPathOrMagnet) && torrentPathOrMagnet.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
             {
                 var fileBytes = await File.ReadAllBytesAsync(torrentPathOrMagnet, cancellationToken);
@@ -48,11 +80,6 @@ namespace SpoolDatTorrent.Core.Services
             else // Otherwise, treat it as a Magnet link or URL
             {
                 content.Add(new StringContent(torrentPathOrMagnet), "urls");
-            }
-
-            if (!string.IsNullOrEmpty(savePath))
-            {
-                content.Add(new StringContent(savePath), "savepath");
             }
 
             var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/add")
@@ -156,7 +183,7 @@ namespace SpoolDatTorrent.Core.Services
         public async Task ResumeTorrentAsync(string torrentId, CancellationToken cancellationToken = default)
         {
             var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("hashes", torrentId) });
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/resume") { Content = content };
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/start") { Content = content };
             AddAuthHeader(request);
 
             await _httpClient.SendAsync(request, cancellationToken);

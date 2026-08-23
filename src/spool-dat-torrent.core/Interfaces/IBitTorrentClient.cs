@@ -13,11 +13,12 @@ namespace SpoolDatTorrent.Core.Interfaces
         Task ResumeTorrentAsync(string torrentId, CancellationToken cancellationToken = default);
         Task SetDownloadLimitAsync(string torrentId, long bytesPerSecond, CancellationToken cancellationToken = default);
         Task MoveFilesAsync(string torrentId, string newDestinationPath, CancellationToken cancellationToken = default);
-
-        Task AddTorrentAsync(string torrentUrlOrMagnet, string? savePath = null, CancellationToken cancellationToken = default);
+        Task AddTorrentAsync(string torrentUrlOrMagnet, string? savePath = null, bool addPaused = true, CancellationToken cancellationToken = default);
 
         // File-level control for selective batching & manual overrides
         Task<IReadOnlyList<TorrentFileDto>> GetFilesAsync(string torrentId, CancellationToken cancellationToken = default);
         Task SetFilePrioritiesAsync(string torrentId, IEnumerable<int> fileIndices, int priority, CancellationToken cancellationToken = default);
+
+        Task<string> GetTorrentSavePathAsync(string torrentId, CancellationToken cancellationToken = default);
     }
 }

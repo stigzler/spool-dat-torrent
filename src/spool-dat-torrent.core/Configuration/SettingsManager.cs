@@ -43,7 +43,12 @@ namespace SpoolDatTorrent.Core.Configuration
                             Username = "admin",
                             Password = "",
                             ApiKey = "",
-                            SpoolingCapGb = 500
+                            SpoolingCapGb = 500,
+                            ClientDownloadsMapping = new ClientDownloadsMapping
+                            {
+                                ClientVirtualPrefix = "",
+                                AppVirtualPrefix = ""
+                            }
                         }
                     }
                 }

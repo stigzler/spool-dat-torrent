@@ -15,9 +15,9 @@ namespace SpoolDatTorrent.Core.Services
 {
     public class SpoolingEngine : BackgroundService
     {
-        private readonly IServiceScopeFactory _scopeFactory;
         private readonly IBitTorrentClientFactory _clientFactory;
         private readonly IDatParserService _datParser;
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly GlobalSpoolSettings _settings;
 
         public SpoolingEngine(
@@ -30,26 +30,6 @@ namespace SpoolDatTorrent.Core.Services
             _clientFactory = clientFactory;
             _datParser = datParser;
             _settings = settings.Value;
-        }
-
-        // Used by Web/Docker: Runs continuously in the background
-        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
-
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                try
-                {
-                    await EvaluateAllStreamsAsync(stoppingToken);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"SpoolingEngine encountered an error: {ex.Message}");
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(_settings.PollIntervalSeconds), stoppingToken);
-            }
         }
 
         // Used by future Desktop App: Can be called on-demand by a UI button or on app startup
@@ -97,20 +77,87 @@ namespace SpoolDatTorrent.Core.Services
                 // Process each stream on this server
                 foreach (var stream in streamsOnThisServer)
                 {
-                    await ProcessStreamAsync(stream, capPerStream, torrentClient, dbContext, cancellationToken);
+                    await ProcessStreamAsync(stream, capPerStream, profileSettings, torrentClient, dbContext, cancellationToken);
                 }
             }
         }
 
+        private string TranslateToLocalPath(string torrentSavePath, string fileRelativeName, TorrentServerProfile profile)
+        {
+            // 1. Combine qBittorrent's root save directory with the relative file path
+            string absoluteReportedPath = Path.Combine(torrentSavePath, fileRelativeName);
+
+            // 2. Apply container mapping if it exists
+            if (profile.ClientDownloadsMapping != null &&
+                !string.IsNullOrWhiteSpace(profile.ClientDownloadsMapping.ClientVirtualPrefix) &&
+                !string.IsNullOrWhiteSpace(profile.ClientDownloadsMapping.AppVirtualPrefix))
+            {
+                string normalizedReported = absoluteReportedPath.Replace('\\', '/');
+                string normalizedClientPrefix = profile.ClientDownloadsMapping.ClientVirtualPrefix.Replace('\\', '/');
+
+                if (normalizedReported.StartsWith(normalizedClientPrefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    string relativeMappedPath = normalizedReported.Substring(normalizedClientPrefix.Length).TrimStart('/');
+                    absoluteReportedPath = Path.Combine(profile.ClientDownloadsMapping.AppVirtualPrefix, relativeMappedPath);
+                }
+            }
+
+            return absoluteReportedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        }
+
+        private async Task CopyAndVerifyAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken)
+        {
+            // FileShare.ReadWrite is the magic key that bypasses the qBittorrent file lock
+            using (var sourceStream = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var destStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await sourceStream.CopyToAsync(destStream, 81920, cancellationToken);
+            }
+
+            // Verify the transfer was perfect
+            var srcInfo = new FileInfo(sourcePath);
+            var destInfo = new FileInfo(destinationPath);
+
+            if (srcInfo.Length != destInfo.Length)
+            {
+                File.Delete(destinationPath); // Nuke the corrupted target
+                throw new IOException($"Verification failed. Size mismatch. Source: {srcInfo.Length}, Dest: {destInfo.Length}");
+            }
+        }
+
+        // Used by Web/Docker: Runs continuously in the background
+        protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await EvaluateAllStreamsAsync(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"SpoolingEngine encountered an error: {ex.Message}");
+                }
+
+                await Task.Delay(TimeSpan.FromSeconds(_settings.PollIntervalSeconds), stoppingToken);
+            }
+        }
+
         private async Task ProcessStreamAsync(
-                    TorrentStreamItem stream,
-                    long allocatedCapBytes,
-                    IBitTorrentClient torrentClient,
-                    SpoolDbContext dbContext,
-                    CancellationToken cancellationToken)
+                            TorrentStreamItem stream,
+                            long allocatedCapBytes,
+                            TorrentServerProfile profileSettings, 
+                            IBitTorrentClient torrentClient,
+                            SpoolDbContext dbContext,
+                            CancellationToken cancellationToken)
         {
             // 1. Get the list of desired games from the local DAT file
             var desiredGames = await _datParser.GetGameNamesFromFileAsync(stream.DatFilePath, cancellationToken);
+
+            // 1.5 Fetch the physical root save path from the client
+            string torrentSavePath = await torrentClient.GetTorrentSavePathAsync(stream.TorrentIdentifier, cancellationToken);
 
             // 2. Fetch the current files and their progress from the BT Client
             var torrentFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
@@ -135,30 +182,46 @@ namespace SpoolDatTorrent.Core.Services
                 var gameName = Path.GetFileNameWithoutExtension(file.Name);
                 bool isDesired = desiredGames.Contains(gameName);
 
-                // --- PASS 1: Check for completed files ready to be moved ---
-                if (file.Progress >= 1.0f && !string.IsNullOrEmpty(destinationRoot))
+            // --- PASS 1: Check for completed files ready to be moved ---
+                if (isDesired && file.Progress >= 1.0f && !string.IsNullOrEmpty(destinationRoot))
                 {
                     try
                     {
-                        // Note: qBittorrent downloads typically reside in the torrent's save path. 
-                        // For local execution, we look for the file relative to the storage setup.
-                        string destinationPath = Path.Combine(destinationRoot, file.Name);
+                        // We use Path.GetFileName to strip away the massive Redump folder structure 
+                        // and drop the zip file directly into your target folder.
+                        string destinationPath = Path.Combine(destinationRoot, Path.GetFileName(file.Name));
 
-                        // If you need a scratch path lookup, ensure it resolves correctly from your client setup,
-                        // otherwise direct file management is handled via the target path.
+                        // Use our shiny new translation layer to find the actual physical file!
+                        string sourcePath = TranslateToLocalPath(torrentSavePath, file.Name, profileSettings);
 
-                        // For V1 safety, we ensure the destination directory exists and mark priority 0
-                        Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                        if (File.Exists(sourcePath))
+                        {
+                            // Only copy if it isn't already sitting in the destination
+                            if (!File.Exists(destinationPath) || new FileInfo(destinationPath).Length != file.Size)
+                            {
+                                Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                                Console.WriteLine($"[Spooling] Copying file to Output: {Path.GetFileName(file.Name)}...");
+                                
+                                await CopyAndVerifyAsync(sourcePath, destinationPath, cancellationToken);
+                                //Console.WriteLine($"[Spooling] Successfully moved to pool.");
+                            }
 
-                        filesToSkip.Add(file.Index);
+                            // Tell Pass 3 to issue a Priority 0 command to qBittorrent to stop seeding it
+                            filesToSkip.Add(file.Index);
+                        }
+                        else
+                        {
+                            // If it's 100% complete but the source file is missing, we already moved and deleted it successfully on a previous run.
+                            filesToSkip.Add(file.Index);
+                        }
+                        
                         continue;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Failed to process completed file {gameName}: {ex.Message}");
+                        Console.WriteLine($"[Error] Failed to process completed file {gameName}: {ex.Message}");
                     }
                 }
-
                 // --- PASS 2: Spool Cap Allocation for active/remaining files ---
                 if (isDesired)
                 {
@@ -183,18 +246,27 @@ namespace SpoolDatTorrent.Core.Services
             }
 
             // 4. Dispatch final priority commands to qBittorrent
-            if (filesToDownload.Any())
-            {
-                await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToDownload, 1, cancellationToken);
-            }
-
             if (filesToSkip.Any())
             {
                 await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToSkip, 0, cancellationToken);
             }
 
+            if (filesToDownload.Any())
+            {
+                await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToDownload, 1, cancellationToken);
+            }
+
+            // TODO: [Phase 3 - Cleanup & Completion]
+            // If filesToDownload is empty AND all 'isDesired' files have been successfully copied to the destination pool:
+            // 1. Issue an API command to qBittorrent to delete the torrent (with deleteFiles = true) to wipe the scratch drive and .parts files.
+            // 2. Update this stream's Status in SQLite from StreamLifecycleStatus.Active to StreamLifecycleStatus.Completed.
+            // 3. Delete files in complete folder if user settings indicate this.
+
             // 5. Sync state changes to SQLite
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            // 6. Release the brakes now that priorities are safely set
+            await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
         }
     }
 }

@@ -105,17 +105,21 @@ namespace SpoolDatTorrent.Cli.Commands
             var qbitClient = clientFactory.GetClient("LocalQBit");
 
             await qbitClient.AuthenticateAsync(cancellationToken);
-            await qbitClient.AddTorrentAsync(settings.Torrent!, settings.TargetOverride, cancellationToken);
+            await qbitClient.AddTorrentAsync(settings.Torrent!, null, addPaused: true, cancellationToken);
 
             AnsiConsole.MarkupLine("[dim]Waiting 5 seconds for qBittorrent to parse the file tree...[/]");
             await Task.Delay(5000, cancellationToken);
 
-            // 5. Execute Engine
-            AnsiConsole.MarkupLine("[cyan]Starting SpoolDatTorrent evaluation...[/]");
+            // 5. Execute Engine continuously
+            AnsiConsole.MarkupLine("[cyan]Starting continuous SpoolDatTorrent evaluation loop. Press Ctrl+C to stop...[/]");
             var engine = serviceProvider.GetRequiredService<SpoolingEngine>();
-            await engine.EvaluateAllStreamsAsync(cancellationToken);
 
-            AnsiConsole.MarkupLine("[green]Evaluation complete. Check qBittorrent![/]");
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await engine.EvaluateAllStreamsAsync(cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken); // Wait before polling again
+            }
+
             return 0;
         }
     }

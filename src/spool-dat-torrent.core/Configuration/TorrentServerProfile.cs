@@ -12,5 +12,6 @@ namespace SpoolDatTorrent.Core.Configuration
         public string Password { get; set; } = string.Empty;
         public string ApiKey { get; set; } = string.Empty;
         public long SpoolingCapGb { get; set; } = 2000;
+        public ClientDownloadsMapping ClientDownloadsMapping { get; set; } = new();
     }
 }
