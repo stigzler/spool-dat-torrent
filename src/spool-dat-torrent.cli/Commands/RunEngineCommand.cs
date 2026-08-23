@@ -19,6 +19,8 @@ namespace SpoolDatTorrent.Cli.Commands
     {
         protected override async Task<int> ExecuteAsync(CommandContext context, SpoolCommandSettings settings, CancellationToken cancellationToken)
         {
+            Logger.Clear();
+
             AnsiConsole.MarkupLine($"[green]Preparing to spool:[/] {Markup.Escape(settings.Torrent!)}");
             AnsiConsole.MarkupLine($"[green]Using DAT:[/] {Markup.Escape(settings.DatPath!)}");
 
@@ -74,6 +76,16 @@ namespace SpoolDatTorrent.Cli.Commands
                         ServerProfileId = "LocalQBit",
                         Status = StreamLifecycleStatus.Active
                     };
+
+                    // Persist the original torrent source so the engine can re-add it after deletion
+                    if (settings.Torrent!.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        newStream.OriginalMagnet = settings.Torrent;
+                    }
+                    else
+                    {
+                        newStream.OriginalTorrentPath = settings.Torrent;
+                    }
 
                     // Map the Filter directly
                     if (!string.IsNullOrWhiteSpace(settings.Filter))

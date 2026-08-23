@@ -57,6 +57,27 @@ namespace SpoolDatTorrent.Core.Services
             return string.Empty;
         }
 
+        public async Task<string> GetTorrentNameAsync(string torrentId, CancellationToken cancellationToken = default)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            var root = document.RootElement;
+
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Array && root.GetArrayLength() > 0)
+            {
+                if (root[0].TryGetProperty("name", out var nameElement))
+                {
+                    return nameElement.GetString() ?? string.Empty;
+                }
+            }
+            return string.Empty;
+        }
+
         public async Task AddTorrentAsync(string torrentPathOrMagnet, string? savePath = null, bool addPaused = true, CancellationToken cancellationToken = default)
         {
             using var content = new MultipartFormDataContent();
@@ -90,7 +111,50 @@ namespace SpoolDatTorrent.Core.Services
             AddAuthHeader(request);
 
             var response = await _httpClient.SendAsync(request, cancellationToken);
+
+            // 409 Conflict means the torrent (same info-hash) is already in the transfer
+            // list. This is an expected, recoverable state during the delete/re-add cycle
+            // (and on CLI re-runs), so treat it as a no-op rather than throwing.
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                return;
+            }
+
             response.EnsureSuccessStatusCode();
+        }
+
+        public async Task<long> GetPieceSizeAsync(string torrentId, CancellationToken cancellationToken = default)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return 16 * 1024 * 1024; // Fallback to 16MB if it fails
+
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            var root = document.RootElement;
+
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Array && root.GetArrayLength() > 0)
+            {
+                if (root[0].TryGetProperty("piece_size", out var pieceSizeElement))
+                {
+                    return pieceSizeElement.GetInt64();
+                }
+            }
+            return 16 * 1024 * 1024;
+        }
+
+        public async Task RecheckTorrentAsync(string torrentId, CancellationToken cancellationToken = default)
+        {
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("hashes", torrentId)
+            });
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/recheck") { Content = content };
+            AddAuthHeader(request);
+
+            await _httpClient.SendAsync(request, cancellationToken);
         }
 
         public async Task<bool> AuthenticateAsync(CancellationToken cancellationToken = default)
@@ -174,7 +238,7 @@ namespace SpoolDatTorrent.Core.Services
         public async Task PauseTorrentAsync(string torrentId, CancellationToken cancellationToken = default)
         {
             var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("hashes", torrentId) });
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/pause") { Content = content };
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/stop") { Content = content };
             AddAuthHeader(request);
 
             await _httpClient.SendAsync(request, cancellationToken);
@@ -187,6 +251,47 @@ namespace SpoolDatTorrent.Core.Services
             AddAuthHeader(request);
 
             await _httpClient.SendAsync(request, cancellationToken);
+        }
+
+        public async Task DeleteTorrentAsync(string torrentId, bool deleteFiles, CancellationToken cancellationToken = default)
+        {
+            var content = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("hashes", torrentId),
+                new KeyValuePair<string, string>("deleteFiles", deleteFiles ? "true" : "false")
+            });
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/delete") { Content = content };
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            // qBittorrent removes the torrent asynchronously. Poll until it is actually
+            // gone so a subsequent re-add of the same info-hash doesn't hit a 409 Conflict.
+            for (int i = 0; i < 20; i++)
+            {
+                if (!await TorrentExistsAsync(torrentId, cancellationToken))
+                {
+                    return;
+                }
+                await Task.Delay(250, cancellationToken);
+            }
+        }
+
+        private async Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return false;
+
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+
+            return document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array
+                && document.RootElement.GetArrayLength() > 0;
         }
 
         public async Task SetDownloadLimitAsync(string torrentId, long bytesPerSecond, CancellationToken cancellationToken = default)

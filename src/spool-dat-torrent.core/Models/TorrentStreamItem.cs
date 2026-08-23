@@ -11,6 +11,8 @@ namespace SpoolDatTorrent.Core.Models
         public string TorrentIdentifier { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string DatFilePath { get; set; } = string.Empty;
+        public string? OriginalTorrentPath { get; set; }
+        public string? OriginalMagnet { get; set; }
         public string? SpoolingTargetOverride { get; set; }
         public SpoolingStrategy Strategy { get; set; } = SpoolingStrategy.MoveFiles;
         public string FileFilter { get; set; } = "*.*";
