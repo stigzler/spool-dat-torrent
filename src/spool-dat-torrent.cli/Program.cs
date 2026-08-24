@@ -33,7 +33,7 @@ namespace SpoolDatTorrent.Cli
                     .WithDescription("Start the spooling monitor for all active streams.");
 
                 config.AddCommand<AddStreamCommand>("add")
-                    .WithDescription("Add a stream and start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>.");
+                    .WithDescription("Add a stream + start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>.");
 
                 config.AddCommand<CancelStreamCommand>("cancel")
                     .WithDescription("Cancel a single stream. REQUIRED: <path|magnet|hash> (positional).");
@@ -42,7 +42,7 @@ namespace SpoolDatTorrent.Cli
                     .WithDescription("Cancel all streams (remove every torrent and clear all stream rows).");
 
                 config.AddCommand<ListStreamsCommand>("list")
-                    .WithDescription("List all streams. OPTIONAL: -s|--status <Active|Paused|Completed|Error>.");
+                    .WithDescription("List all servers + streams. OPTIONAL: -s|--status <Active|Paused|Completed|Error>.");
 
                 // Show how to get command-specific help in the top-level help output.
                 config.AddExample(new[] { "add", "-h" ,": Show extended help for add"});

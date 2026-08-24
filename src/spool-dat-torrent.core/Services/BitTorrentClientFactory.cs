@@ -27,9 +27,18 @@ namespace SpoolDatTorrent.Core.Services
                 profileName = _settings.DefaultServerProfile;
             }
 
+            // If the resolved profile (including DefaultServerProfile) still doesn't exist,
+            // fall back to the first configured profile rather than throwing.
             if (!_settings.TorrentServers.TryGetValue(profileName, out var profile))
             {
-                throw new InvalidOperationException($"Server profile '{profileName}' not found in configuration.");
+                var firstProfile = _settings.TorrentServers.Keys.FirstOrDefault();
+                if (firstProfile == null)
+                {
+                    throw new InvalidOperationException("No BitTorrent server profiles are configured.");
+                }
+
+                profileName = firstProfile;
+                profile = _settings.TorrentServers[firstProfile];
             }
 
             // In the future, if profile.ClientType == "Deluge", you return a DelugeClient here

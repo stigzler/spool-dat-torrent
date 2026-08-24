@@ -5,6 +5,7 @@ using Spectre.Console;
 using Spectre.Console.Cli;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
+using SpoolDatTorrent.Core.DTOs;
 using SpoolDatTorrent.Core.Interfaces;
 using SpoolDatTorrent.Core.Services;
 using System.Threading;
@@ -31,13 +32,45 @@ namespace SpoolDatTorrent.Cli.Commands
 
             var serviceProvider = services.BuildServiceProvider();
 
-            var command = new Core.Commands.ListStreamsCommand(
+            var streamsCommand = new Core.Commands.ListStreamsCommand(
                 serviceProvider.GetRequiredService<IServiceScopeFactory>());
+            var streams = await streamsCommand.ExecuteAsync(settings.Status, cancellationToken);
 
-            var streams = await command.ExecuteAsync(settings.Status, cancellationToken);
+            // Show server profiles.
+            AnsiConsole.MarkupLine("[bold]BitTorrent Server Profiles[/]");
+            var serversCommand = new Core.Commands.ListServerProfilesCommand(
+                serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GlobalSpoolSettings>>());
+            var servers = await serversCommand.ExecuteAsync(cancellationToken);
+            RenderServers(servers);
 
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[bold]Current Spooling Streams[/]");
             StreamTableRenderer.Render(streams);
             return 0;
+        }
+
+        private static void RenderServers(IReadOnlyList<ServerProfileDetails> servers)
+        {
+            var table = new Table();
+            table.AddColumn("Name");
+            table.AddColumn("ClientType");
+            table.AddColumn("Host");
+            table.AddColumn("Username");
+            table.AddColumn("ApiKey");
+            table.AddColumn("Cap (GB)");
+
+            foreach (var s in servers)
+            {
+                table.AddRow(
+                    Markup.Escape(s.Name),
+                    Markup.Escape(s.ClientType),
+                    Markup.Escape(s.Host),
+                    Markup.Escape(s.Username),
+                    s.HasApiKey ? "[green]yes[/]" : "[grey]no[/]",
+                    s.SpoolingCapGb.ToString());
+            }
+
+            AnsiConsole.Write(table);
         }
     }
 }
