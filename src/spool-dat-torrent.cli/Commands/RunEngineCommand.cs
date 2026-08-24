@@ -25,7 +25,7 @@ namespace SpoolDatTorrent.Cli.Commands
             Logger.Clear();
 
             AnsiConsole.MarkupLine($"[green]Spooling Torrent:[/] [[{Markup.Escape(Path.GetFileName(settings.Torrent!))}]]");
-            AnsiConsole.MarkupLine($"[green]Filtering by DAT:[/] [[{Markup.Escape(Path.GetFileName(settings.DatPath!))}]]");
+            AnsiConsole.MarkupLine($"[green]DAT Filter:[/] [[{Markup.Escape(Path.GetFileName(settings.DatPath!))}]]");
 
             // 1. Load Configuration
             var configuration = new ConfigurationBuilder()

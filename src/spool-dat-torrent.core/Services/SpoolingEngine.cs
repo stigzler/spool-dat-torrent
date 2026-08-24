@@ -354,6 +354,7 @@ namespace SpoolDatTorrent.Core.Services
 
             // STATE: WAIT — files are actively downloading. Do nothing until the whole
             // batch completes, so we never delete the torrent mid-download.
+            LogStatus($"Awaiting completion for {downloading.Count} files.");
             if (downloading.Any())
             {
                 var inProgress = downloading.Select(f => $"{Path.GetFileName(f.Name)} ({f.Progress:P})");
@@ -369,7 +370,7 @@ namespace SpoolDatTorrent.Core.Services
             // rebuild boundary pieces into .parts files for the files we skip.
             if (readyToMove.Any())
             {
-                LogStatus($"Halting torrent to copy {readyToMove.Count} completed files...");
+                LogStatus($"Halting torrent to move {readyToMove.Count} completed files...");
                 await torrentClient.PauseTorrentAsync(stream.TorrentIdentifier, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
@@ -413,7 +414,7 @@ namespace SpoolDatTorrent.Core.Services
             // (torrent added paused) or a freshly re-added torrent. Set priorities and resume.
             if (pending.Any())
             {
-                LogStatus("Constructing next batch to fit in batch size cap...");
+                LogStatus($"Constructing next batch to fit into maximum spool size ({allocatedCapBytes.ToGigabytes()} GB)...");
                 await AllocateBatchAsync(stream, torrentFiles, desiredGames, alreadyMoved, allocatedCapBytes, torrentClient, cancellationToken);
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
