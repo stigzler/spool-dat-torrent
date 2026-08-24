@@ -1,0 +1,195 @@
+@using SpoolDatTorrent.Core.Services
+@inject IHttpClientFactory HttpClientFactory
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudGrid>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="_name"
+                              @bind-Value:after="HandleName"
+                              Label="Profile Name"
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Profile.Host"
+                              @bind-Value:after="ScheduleSave"
+                              Label="Host"
+                              HelperText="Base URL of the BitTorrent client WebUI, e.g. http://localhost:8080"
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="_capText"
+                              @bind-Value:after="ScheduleSave"
+                              Label="Spooling Cap (GB)"
+                              HelperText="Maximum total size of files downloaded in a single batch for this server."
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Profile.Username"
+                              @bind-Value:after="ScheduleSave"
+                              Label="Username"
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Profile.Password"
+                              @bind-Value:after="ScheduleSave"
+                              Label="Password"
+                              InputType="InputType.Password"
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Profile.ApiKey"
+                              @bind-Value:after="ScheduleSave"
+                              Label="API Key"
+                              HelperText="Optional qBittorrent API key. Takes precedence over username/password when set."
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudSelect T="string" @bind-Value="Profile.ClientType"
+                           @bind-Value:after="ScheduleSave"
+                           Label="Client Type"
+                           Variant="Variant.Outlined" FullWidth="true">
+                    @foreach (var type in BitTorrentClientTypes.All)
+                    {
+                        <MudSelectItem Value="@type">@type</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-3" />
+
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Downloads Path Mapping</MudText>
+        <MudText Typo="Typo.caption" Class="mb-3">
+            Translate the client's reported download paths to SDT's paths. Leave both blank when both apps see the same paths.
+        </MudText>
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Profile.ClientDownloadsMapping.ClientVirtualPrefix"
+                              @bind-Value:after="ScheduleSave"
+                              Label="Client Virtual Prefix"
+                              HelperText="Path the client API reports, e.g. /downloads"
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudTextField @bind-Value="Profile.ClientDownloadsMapping.AppVirtualPrefix"
+                              @bind-Value:after="ScheduleSave"
+                              Label="App Virtual Prefix"
+                              HelperText="Path mapped inside SDT, e.g. /app/scratch"
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudItem>
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="TestConnection" Disabled="_isTesting" StartIcon="@Icons.Material.Filled.Link">
+            @(_isTesting ? "Testing..." : "Test")
+        </MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public TorrentServerProfile Profile { get; set; } = default!;
+    [Parameter] public string ProfileName { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback<(string OldName, string NewName)> OnRename { get; set; }
+
+    private string _name = string.Empty;
+    private string _currentName = string.Empty;
+    private string _capText = string.Empty;
+    private bool _capInitialized;
+    private bool _isTesting;
+    private CancellationTokenSource? _debounce;
+
+    protected override void OnParametersSet()
+    {
+        _currentName = ProfileName;
+        _name = ProfileName;
+        if (!_capInitialized)
+        {
+            _capText = Profile.SpoolingCapGb.ToString();
+            _capInitialized = true;
+        }
+    }
+
+    private void ScheduleSave()
+    {
+        if (long.TryParse(_capText, out var cap) && cap >= 0)
+        {
+            Profile.SpoolingCapGb = cap;
+        }
+
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(600, token);
+                if (!token.IsCancellationRequested)
+                {
+                    await InvokeAsync(Persist);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // A newer edit superseded this save.
+            }
+        });
+    }
+
+    private void HandleName()
+    {
+        var newName = _name?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            _name = _currentName;
+            Snackbar.Add("Profile name cannot be empty.", Severity.Warning);
+            return;
+        }
+
+        if (string.Equals(newName, _currentName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _currentName = newName;
+        _ = OnRename.InvokeAsync((ProfileName, newName));
+        ScheduleSave();
+    }
+
+    private void Persist() => OnSave.InvokeAsync();
+
+    private async Task TestConnection()
+    {
+        if (_isTesting) return;
+        _isTesting = true;
+        StateHasChanged();
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient();
+            var client = new QBitClient(httpClient, new GlobalSpoolSettings(), Profile);
+
+            var ok = await client.AuthenticateAsync();
+            Snackbar.Add(ok ? $"Connected to '{Profile.Host}'." : $"Authentication failed for '{Profile.Host}'.", ok ? Severity.Success : Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Test failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isTesting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Close() => MudDialog.Close();
+}

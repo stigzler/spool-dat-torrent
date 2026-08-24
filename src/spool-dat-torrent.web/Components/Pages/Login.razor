@@ -1,0 +1,33 @@
+@page "/login"
+@layout EmptyLayout
+@inject NavigationManager Navigation
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-6">
+    <MudCard Class="pa-4">
+        <MudText Typo="Typo.h5" Class="mb-3">Sign in</MudText>
+
+        @if (_error)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">Incorrect password.</MudAlert>
+        }
+
+        @* Plain HTML form posts to the /auth/login endpoint defined in Program.cs, which
+           performs the password check and sets the auth cookie. *@
+        <form method="post" action="/auth/login">
+            <input type="password" name="password" class="mud-input" placeholder="Password" />
+            <button type="submit" class="mud-button-root mud-button mud-button-filled mud-button-filled-primary">Log in</button>
+        </form>
+    </MudCard>
+</MudContainer>
+
+@code {
+    private bool _error;
+
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? Error { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _error = Error == "1";
+    }
+}

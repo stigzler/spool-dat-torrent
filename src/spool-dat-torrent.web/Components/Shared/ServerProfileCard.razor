@@ -1,0 +1,97 @@
+@using SpoolDatTorrent.Core.Services
+
+<MudCard Elevation="2" Class="d-flex flex-column h-100">
+    <MudCardHeader>
+        <MudCardHeaderContent>
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.Dns" Color="Color.Primary" />
+                <MudText Typo="Typo.h6">@Name</MudText>
+                @if (IsDefault)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Class="ml-2">Default</MudChip>
+                }
+            </MudStack>
+            <MudChip T="string" Size="Size.Small" Class="mt-2">@Profile.ClientType</MudChip>
+        </MudCardHeaderContent>
+    </MudCardHeader>
+
+    <MudCardContent Class="flex-grow-1">
+        <MudText Typo="Typo.body2">@Profile.Host</MudText>
+    </MudCardContent>
+
+    <MudCardActions>
+        <MudStack Row="true" Spacing="1">
+            <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Edit" StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="TestConnection" Disabled="_isTesting" StartIcon="@Icons.Material.Filled.Link">
+                @(_isTesting ? "Testing..." : "Test")
+            </MudButton>
+            <MudSpacer />
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="Delete" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+        </MudStack>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Inject] private IHttpClientFactory HttpClientFactory { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    [Parameter] public TorrentServerProfile Profile { get; set; } = default!;
+    [Parameter] public string Name { get; set; } = string.Empty;
+    [Parameter] public bool IsDefault { get; set; }
+    [Parameter] public EventCallback OnSave { get; set; }
+    [Parameter] public EventCallback<(string OldName, string NewName)> OnRename { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    private bool _isTesting;
+
+    private async Task Edit()
+    {
+        var parameters = new DialogParameters
+        {
+            ["Profile"] = Profile,
+            ["ProfileName"] = Name,
+            ["OnSave"] = OnSave,
+            ["OnRename"] = OnRename
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        await DialogService.ShowAsync<ServerProfileEditDialog>("Edit Server Profile", parameters, options);
+    }
+
+    private async Task TestConnection()
+    {
+        if (_isTesting) return;
+        _isTesting = true;
+        StateHasChanged();
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient();
+            var client = new QBitClient(httpClient, new GlobalSpoolSettings(), Profile);
+
+            var ok = await client.AuthenticateAsync();
+            Snackbar.Add(ok ? $"Connected to '{Profile.Host}'." : $"Authentication failed for '{Profile.Host}'.", ok ? Severity.Success : Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Test failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isTesting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Delete()
+    {
+        var parameters = new DialogParameters { ["ProfileName"] = Name };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small };
+        var dialog = await DialogService.ShowAsync<ConfirmDeleteDialog>("Delete server profile", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled) return;
+
+        await OnDelete.InvokeAsync();
+    }
+}

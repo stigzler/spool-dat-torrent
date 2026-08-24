@@ -46,6 +46,65 @@ namespace SpoolDatTorrent.Core.Configuration
             return defaultPath;
         }
 
+        /// <summary>
+        /// Load settings from config.json, creating a default config first if missing.
+        /// Unlike EnsureDefaultSettingsExist, this never calls Environment.Exit, so it is
+        /// safe to call from a long-running host (e.g. the web app).
+        /// </summary>
+        public static GlobalSpoolSettings LoadSettings()
+        {
+            string settingsPath = GetSettingsPath();
+
+            if (File.Exists(settingsPath))
+            {
+                var json = File.ReadAllText(settingsPath);
+                return JsonSerializer.Deserialize<GlobalSpoolSettings>(json) ?? CreateDefaultSettings();
+            }
+
+            var defaults = CreateDefaultSettings();
+            SaveSettings(defaults);
+            return defaults;
+        }
+
+        /// <summary>Persist settings to config.json.</summary>
+        public static void SaveSettings(GlobalSpoolSettings settings)
+        {
+            string settingsPath = GetSettingsPath();
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, options));
+        }
+
+        private static GlobalSpoolSettings CreateDefaultSettings()
+        {
+            return new GlobalSpoolSettings
+            {
+                DefaultServerProfile = "LocalQBit",
+                DefaultSpoolingTarget = @"/downloads/spooled",
+                PollIntervalSeconds = 15,
+                SettlingTimeSeconds = 30,
+                TorrentServers = new Dictionary<string, TorrentServerProfile>
+                {
+                    {
+                        "LocalQBit",
+                        new TorrentServerProfile
+                        {
+                            ClientType = "qBittorrent",
+                            Host = "http://localhost:8080",
+                            Username = "admin",
+                            Password = "",
+                            ApiKey = "",
+                            SpoolingCapGb = 500,
+                            ClientDownloadsMapping = new ClientDownloadsMapping
+                            {
+                                ClientVirtualPrefix = "",
+                                AppVirtualPrefix = ""
+                            }
+                        }
+                    }
+                }
+            };
+        }
+
         public static void EnsureDefaultSettingsExist()
         {
             string settingsPath = GetSettingsPath();

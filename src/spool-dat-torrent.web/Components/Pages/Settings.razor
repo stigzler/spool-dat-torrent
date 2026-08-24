@@ -1,0 +1,164 @@
+@page "/settings"
+@using SpoolDatTorrent.Core.Configuration
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Settings</PageTitle>
+
+<h1 class="mb-4">Settings</h1>
+
+<MudCard Class="pa-4">
+    <MudText Typo="Typo.h6" Class="mb-3">Global Settings</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_settings.DefaultSpoolingTarget"
+                          @bind-Value:after="ScheduleSave"
+                          Label="Default Spooling Target"
+                          HelperText="Root folder where completed ROMs are moved to. Per-stream overrides take precedence."
+                          Variant="Variant.Outlined" FullWidth="true" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudSelect T="string" @bind-Value="_settings.DefaultServerProfile"
+                       @bind-Value:after="ScheduleSave"
+                       Label="Default Server Profile"
+                       HelperText="The BitTorrent client used when a stream doesn't specify one."
+                       Variant="Variant.Outlined" FullWidth="true">
+                @foreach (var name in _settings.TorrentServers.Keys)
+                {
+                    <MudSelectItem Value="@name">@name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudNumericField @bind-Value="_pollInterval"
+                             @bind-Value:after="ScheduleSave"
+                             Label="Poll Interval (seconds)"
+                             HelperText="How often the engine queries the BitTorrent client for progress. Whole number between 1 and 60."
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="1" Max="60"
+                             Class="sdt-numeric" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudNumericField @bind-Value="_settlingTimeSeconds"
+                             @bind-Value:after="ScheduleSave"
+                             Label="Settling Time (seconds)"
+                             HelperText="Time to wait after pausing before moving files, so the client finishes writing. Whole number between 1 and 480."
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="1" Max="480"
+                             Class="sdt-numeric" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudNumericField @bind-Value="_serverRetryCount"
+                             @bind-Value:after="ScheduleSave"
+                             Label="Server Retry Count"
+                             HelperText="Consecutive connection failures before a stream is marked as errored. Whole number between 1 and 10."
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="1" Max="10"
+                             Class="sdt-numeric" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudNumericField @bind-Value="_settings.SpoolingCapSafetyMarginPercent"
+                             @bind-Value:after="ScheduleSave"
+                             Label="Safety Margin (%)"
+                             HelperText="Headroom reserved for BitTorrent boundary-piece overhead (.parts files). Whole number between 0 and 20."
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="0" Max="20"
+                             Class="sdt-numeric" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_settings.CacheDirectory"
+                          @bind-Value:after="ScheduleSave"
+                          Label="Cache Directory"
+                          HelperText="Where per-stream copies of the .torrent and .dat files are stored. Leave blank for the default."
+                          Variant="Variant.Outlined" FullWidth="true" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_settings.AdminPassword"
+                          @bind-Value:after="ScheduleSave"
+                          Label="Admin Password"
+                          HelperText="Password required to log in to this web UI. Leave blank to disable login."
+                          Variant="Variant.Outlined" FullWidth="true"
+                          InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                          Adornment="Adornment.End"
+                          AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          OnAdornmentClick="TogglePasswordVisibility"
+                          AdornmentAriaLabel="Toggle password visibility" />
+        </MudItem>
+    </MudGrid>
+</MudCard>
+
+@code {
+    [Inject]
+    private GlobalSpoolSettings _settings { get; set; } = default!;
+
+    private int _pollInterval;
+    private int _settlingTimeSeconds;
+    private int _serverRetryCount;
+    private bool _showPassword;
+    private CancellationTokenSource? _debounce;
+
+    protected override void OnInitialized()
+    {
+        _pollInterval = _settings.PollIntervalSeconds;
+        _settlingTimeSeconds = _settings.SettlingTimeSeconds;
+        _serverRetryCount = _settings.ServerRetryCount;
+    }
+
+    private void TogglePasswordVisibility()
+    {
+        _showPassword = !_showPassword;
+    }
+
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Settings.razor.js");
+        await _module.InvokeVoidAsync("initNumericGuard");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
+
+    private void ScheduleSave()
+    {
+        // Write the UI values back onto the shared settings object.
+        _settings.PollIntervalSeconds = _pollInterval;
+        _settings.SettlingTimeSeconds = _settlingTimeSeconds;
+        _settings.ServerRetryCount = _serverRetryCount;
+
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        var token = _debounce.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(600, token);
+                if (!token.IsCancellationRequested)
+                {
+                    await InvokeAsync(Persist);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // A newer edit superseded this save.
+            }
+        });
+    }
+
+    private void Persist()
+    {
+        // Silent autosave: persist without a toast.
+        SettingsManager.SaveSettings(_settings);
+    }
+}

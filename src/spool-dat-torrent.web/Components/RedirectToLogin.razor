@@ -1,0 +1,18 @@
+@inject NavigationManager Navigation
+@implements IDisposable
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // If the user isn't authenticated, redirect to /login (full navigation so the
+        // server-side auth pipeline processes the request).
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+    }
+}

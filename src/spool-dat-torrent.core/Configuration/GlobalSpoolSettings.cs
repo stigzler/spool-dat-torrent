@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Text;
 
 namespace SpoolDatTorrent.Core.Configuration
@@ -9,7 +10,19 @@ namespace SpoolDatTorrent.Core.Configuration
         public string DefaultServerProfile { get; set; } = "LocalQBit";
         public Dictionary<string, TorrentServerProfile> TorrentServers { get; set; } = new();
         public string DefaultSpoolingTarget { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Password required to log in to the web UI. Single-admin, LAN-only use; compared
+        /// as plaintext on login. Empty means the web UI is not protected.
+        /// </summary>
+        public string AdminPassword { get; set; } = string.Empty;
+
+        /// <summary>How often the engine polls the BitTorrent client, in seconds.</summary>
+        [Range(1, 60)]
         public int PollIntervalSeconds { get; set; } = 2;
+
+        /// <summary>Time to wait after pausing before moving files, in seconds.</summary>
+        [Range(1, 480)]
         public int SettlingTimeSeconds { get; set; } = 30;
 
         /// <summary>
@@ -25,6 +38,7 @@ namespace SpoolDatTorrent.Core.Configuration
         /// streams are marked as Error (and polling for them stops). A fresh engine run
         /// resets the counters and re-activates errored streams.
         /// </summary>
+        [Range(1, 10)]
         public int ServerRetryCount { get; set; } = 3;
 
         /// <summary>
@@ -37,6 +51,7 @@ namespace SpoolDatTorrent.Core.Configuration
         /// Example: a 5% margin on a 1TB cap reserves 50GB of headroom, so the engine only
         /// allocates up to 950GB of selected files, leaving room for the .parts overhead.
         /// </summary>
-        public double SpoolingCapSafetyMarginPercent { get; set; } = 5.0;
+        [Range(0, 20)]
+        public int SpoolingCapSafetyMarginPercent { get; set; } = 5;
     }
 }

@@ -4,17 +4,23 @@
 <MudThemeProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
+<MudPopoverProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1">
-        <MudText Typo="Typo.h6" Class="ml-3">SpoolDatTorrent</MudText>
+    <MudAppBar Elevation="1" Color="Color.Dark">
+        <MudImage Src="/icon-128px.png" Alt="SpoolDatTorrent Icon" Height="48" Class="ml-3 mr-2" Style="object-fit: contain;" />
+        <MudText Typo="Typo.h6" Style="font-family: 'Rubik', sans-serif; font-weight: 500;">SpoolDatTorrent</MudText>
         <MudSpacer />
+        <MudIconButton Icon="@Icons.Material.Filled.ExitToApp" OnClick="Logout" Title="Log out" />
     </MudAppBar>
-    
+
     <MudDrawer Open="true" ClipMode="DrawerClipMode.Always" Elevation="2">
         <MudNavMenu>
-            <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
-            <MudNavLink Href="settings" Icon="@Icons.Material.Filled.Settings">Settings & Spooling</MudNavLink>
+            <MudNavLink Href="streams" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">Streams</MudNavLink>
+            <MudNavLink Href="clients" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dns">Servers</MudNavLink>
+            <MudNavLink Href="spool" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.PlayCircle">Spool / Pause</MudNavLink>
+            <MudNavLink Href="about" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Info">About</MudNavLink>
+            <MudNavLink Href="settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
         </MudNavMenu>
     </MudDrawer>
 
@@ -24,3 +30,13 @@
         </MudContainer>
     </MudMainContent>
 </MudLayout>
+
+@code {
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+
+    private void Logout()
+    {
+        Navigation.NavigateTo("/auth/logout", forceLoad: true);
+    }
+}

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using SpoolDatTorrent.Core.Commands;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
 using SpoolDatTorrent.Core.Helpers;
@@ -46,6 +47,8 @@ namespace SpoolDatTorrent.Cli.Commands
             services.AddTransient<IDatParserService, LogiqxDatParserService>();
             services.AddSingleton<ISpoolingProgressReporter, SpectreProgressReporter>();
             services.AddTransient<SpoolingEngine>();
+            services.AddTransient<DeleteServerProfileCommand>();
+            services.AddTransient<AddServerProfileCommand>();
 
             return services.BuildServiceProvider();
         }

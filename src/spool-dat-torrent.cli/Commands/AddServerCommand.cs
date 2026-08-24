@@ -1,6 +1,9 @@
+using Microsoft.Extensions.DependencyInjection;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using SpoolDatTorrent.Core.Commands;
 using SpoolDatTorrent.Core.Configuration;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SpoolDatTorrent.Cli.Commands
@@ -10,15 +13,17 @@ namespace SpoolDatTorrent.Cli.Commands
     /// </summary>
     public class AddServerCommand : AsyncCommand
     {
-        protected override Task<int> ExecuteAsync(CommandContext context, CancellationToken cancellationToken)
+        protected override async Task<int> ExecuteAsync(CommandContext context, CancellationToken cancellationToken)
         {
-            var profileName = SettingsManager.AddServerProfile();
+            var serviceProvider = CliServiceProvider.Build();
 
-            AnsiConsole.MarkupLine($"[green]Created new server profile:[/] {Markup.Escape(profileName)}");
+            var command = serviceProvider.GetRequiredService<AddServerProfileCommand>();
+            var result = await command.ExecuteAsync(cancellationToken);
+
+            AnsiConsole.MarkupLine($"[green]{Markup.Escape(result.Message)}[/]");
             AnsiConsole.MarkupLine($"[grey]Edit {Markup.Escape(SettingsManager.GetSettingsPath())} to configure it.[/]");
 
-            return Task.FromResult(0);
+            return result.Success ? 0 : 1;
         }
     }
 }
-

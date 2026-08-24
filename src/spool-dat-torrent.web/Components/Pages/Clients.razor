@@ -1,0 +1,121 @@
+@page "/clients"
+@using SpoolDatTorrent.Core.Commands
+@using SpoolDatTorrent.Core.Configuration
+@using SpoolDatTorrent.Web.Components.Shared
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject DeleteServerProfileCommand DeleteServerCommand
+@inject AddServerProfileCommand AddServerCommand
+
+<PageTitle>Servers</PageTitle>
+
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h1 class="mb-0">Servers</h1>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="AddServer">Add Server</MudButton>
+</div>
+
+@if (_profiles.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No BitTorrent clients are configured. Click "Add Server" to create one.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var kvp in _profiles)
+        {
+            <MudItem xs="12" md="6" lg="4">
+                <ServerProfileCard @key="kvp.Value"
+                                   Name="@kvp.Key"
+                                   Profile="kvp.Value"
+                                   IsDefault="@(string.Equals(_settings.DefaultServerProfile, kvp.Key, StringComparison.OrdinalIgnoreCase))"
+                                   OnSave="Save"
+                                   OnRename="RenameProfile"
+                                   OnDelete="() => DeleteProfile(kvp.Key)" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Inject] private GlobalSpoolSettings _settings { get; set; } = default!;
+
+    private Dictionary<string, TorrentServerProfile> _profiles = new();
+
+    protected override void OnInitialized()
+    {
+        _profiles = _settings.TorrentServers;
+    }
+
+    private void Save()
+    {
+        // Silent autosave: persist without a toast (a toast on every keystroke is noisy).
+        SettingsManager.SaveSettings(_settings);
+    }
+
+    private async Task AddServer()
+    {
+        var result = await AddServerCommand.ExecuteAsync();
+        if (!result.Success || result.Profile is null)
+        {
+            Snackbar.Add(result.Message, Severity.Warning);
+            return;
+        }
+
+        _profiles = _settings.TorrentServers;
+        StateHasChanged();
+
+        var parameters = new DialogParameters
+        {
+            ["Profile"] = result.Profile,
+            ["ProfileName"] = result.ProfileName,
+            ["OnSave"] = EventCallback.Factory.Create(this, Save),
+            ["OnRename"] = EventCallback.Factory.Create<(string, string)>(this, rename => RenameProfile(rename))
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        await DialogService.ShowAsync<ServerProfileEditDialog>("Add Server Profile", parameters, options);
+    }
+
+    private void RenameProfile((string OldName, string NewName) rename)
+    {
+        var (oldName, newName) = rename;
+
+        if (!_profiles.TryGetValue(oldName, out var profile)) return;
+
+        // Reject a rename that collides with an existing profile.
+        if (_profiles.ContainsKey(newName))
+        {
+            Snackbar.Add($"A profile named '{newName}' already exists.", Severity.Warning);
+            StateHasChanged();
+            return;
+        }
+
+        _profiles.Remove(oldName);
+        _profiles[newName] = profile;
+
+        if (string.Equals(_settings.DefaultServerProfile, oldName, StringComparison.OrdinalIgnoreCase))
+        {
+            _settings.DefaultServerProfile = newName;
+        }
+
+        SettingsManager.SaveSettings(_settings);
+        Snackbar.Add("Server profile renamed.", Severity.Success);
+        StateHasChanged();
+    }
+
+    private async Task DeleteProfile(string name)
+    {
+        var result = await DeleteServerCommand.ExecuteAsync(name);
+
+        if (result.Success)
+        {
+            _profiles = _settings.TorrentServers;
+            Snackbar.Add(result.Message, Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add(result.Message, Severity.Warning);
+        }
+
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,23 @@
+@inject IDialogService DialogService
+
+<MudDialog>
+    <DialogContent>
+        <MudText>Delete profile '@_profileName'? This cannot be undone.</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="Confirm">Delete</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialogInstance { get; set; } = default!;
+
+    [Parameter] public string ProfileName { get; set; } = string.Empty;
+
+    private string _profileName => ProfileName;
+
+    private void Cancel() => MudDialogInstance.Close(DialogResult.Cancel());
+
+    private void Confirm() => MudDialogInstance.Close(DialogResult.Ok(true));
+}

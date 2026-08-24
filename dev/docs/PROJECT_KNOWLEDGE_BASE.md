@@ -11,6 +11,7 @@ SpoolDatTorrent (SDT) automates downloading **1G1R (one game, one region) ROM se
 **The problem it solves:** ROM torrents are enormous (e.g. a PlayStation set on Myrient is ~3.6 TB) and contain many redundant versions of the same game (different regions/versions). A user only wants the 1G1R subset defined by a DAT file (e.g. produced by Retool).
 
 **How it works:**
+
 1. User provides a `.torrent` (or magnet) + a 1G1R DAT file.
 2. SDT talks to a BitTorrent client's API (currently **qBittorrent only**) and manipulates **per-file priorities** to download only the DAT-matched files.
 3. Downloads happen in **batches** bounded by a configurable storage cap (e.g. "download up to 800 GB at a time").
@@ -35,6 +36,7 @@ Solution file: `spool-dat-torrent.slnx` (the new XML solution format).
 **Target framework:** `.NET 10` (net10.0) across all projects.
 
 **Key packages:**
+
 - `BencodeNET` 5.0.0 (parse `.torrent` files / info-hash)
 - `Microsoft.EntityFrameworkCore.Sqlite` 10.0.11 (persistence)
 - `Microsoft.Extensions.Http` / `Hosting.Abstractions` 10.0.0
@@ -54,6 +56,7 @@ The heart of the app. It is a `BackgroundService` (so it can run continuously in
 **Public entry point:** `EvaluateAllStreamsAsync(CancellationToken)` — one "poll cycle".
 
 **Flow of one cycle:**
+
 1. Load **all** streams from the DB.
 2. On the **first** cycle of a fresh engine instance, re-activate any `Error` streams to `Active` (so a fixed server is retried after a restart). Guarded by `_hasReactivatedOnStart`.
 3. Filter to `Active` streams only.
@@ -70,6 +73,7 @@ The heart of the app. It is a `BackgroundService` (so it can run continuously in
 - `pending` — everything else (not on disk, not downloading). **Includes priority-0 files** (demoted after being moved, or skipped by the cap) so they get re-allocated.
 
 **States (in order):**
+
 1. **WAIT** — if `downloading.Any()`, log and return (do nothing until batch finishes).
 2. **DRAIN** — if `readyToMove.Any()`: pause torrent → copy each completed file to destination → **delete the whole torrent** (`deleteFiles=true`) → **re-add the same `.torrent`** (same info-hash → same swarm) → re-allocate next batch.
 3. **ALLOCATE** — if `pending.Any()`: set file priorities (1 = download, 0 = skip) up to the cap, then resume.
@@ -96,6 +100,7 @@ BitTorrent downloads in **pieces**. A piece can span two files. When a selected 
 qBittorrent's `delete` is **asynchronous**. If you re-add before the files are actually gone from disk, qBittorrent hash-checks the stale files (the slow "checking" phase).
 
 **Fixes in place:**
+
 - `DeleteTorrentAsync` polls (up to 60s) until the torrent is actually gone.
 - `WaitForScratchFilesDeletedAsync` waits until the downloaded files are gone from disk before re-adding.
 - `AddTorrentAsync` treats HTTP 409 (torrent already exists) as a no-op.
@@ -214,6 +219,7 @@ The only implementation. Talks to qBittorrent WebUI API v2 (`/api/v2/...`).
 **Auth:** API key (Bearer header) if `ApiKey` set, else cookie-based login.
 
 **Key endpoints used:**
+
 - `/api/v2/torrents/info` — save path, name, piece size, all hashes.
 - `/api/v2/torrents/files` — file list (index, name, size, progress, priority).
 - `/api/v2/torrents/filePrio` — set file priorities (`id` = `|`-separated indices, `priority` 0/1/6/7).
@@ -240,6 +246,7 @@ Parses Logiqx XML DAT files, returns a `HashSet<string>` of game names (case-ins
 ## 9. Progress reporting (host-agnostic)
 
 `ISpoolingProgressReporter` (`Interfaces/ISpoolingProgressReporter.cs`) — the seam between the engine and any UI:
+
 - `ReportStreams(IReadOnlyList<StreamProgressInfo>)`
 - `ReportStatus(string)`
 
@@ -274,11 +281,13 @@ The engine emits structured events through this. The CLI implements it with `Spe
 Runs the engine in a background task (poll cadence = `PollIntervalSeconds`), and renders a **Spectre `AnsiConsole.Progress()`** live display refreshing every 1 second.
 
 **Display layout (top → bottom):**
+
 1. Job rows — `(streamId) name — moved/total files processed` with progress bar.
 2. Status line — indeterminate spinner, latest status message.
 3. File rows — `(streamId) filename (size)` with progress bar.
 
 **Idiosyncrasies:**
+
 - Spectre renders tasks in **add order** (fixed), so the status task is created lazily after the first job task.
 - Long text is **truncated** (`Truncate` helper, 40 chars for names, 70 for status) to prevent line-wrap. Uses `"..."` (three dots, not the Unicode ellipsis).
 - Ctrl+C is handled via `Console.CancelKeyPress` + `try/catch OperationCanceledException` to exit cleanly and restore the cursor (`AnsiConsole.Cursor.Show()` in `finally`).
@@ -309,10 +318,12 @@ These live in `core/Commands/` and are reusable by CLI, web, desktop:
 ## 12. Destination path resolution
 
 `GetDestinationRoot(stream, torrentName)`:
+
 - If `SpoolingTargetOverride` set → use it directly (files go straight in, no torrent-name subfolder).
 - Else → `DefaultSpoolingTarget / torrentName`.
 
 `GetPrefixToStrip` + `GetCommonRootDirectory` + `StripPrefix`:
+
 - With explicit target: strip the **common root directory** shared by all files (so `psx/Wipeout 3.zip` not `psx/Redump/Sony - PlayStation/Wipeout 3.zip`), preserving subfolders below that root.
 - Without target: strip only the torrent name (first segment) to avoid duplication.
 - If no common root (files scattered), fall back to mirroring the full torrent structure.
@@ -382,3 +393,51 @@ These live in `core/Commands/` and are reusable by CLI, web, desktop:
 - **Logging** via `Logger.Log` (static, writes to `SpoolDatTorrent.log`). `LogStatus` in the engine routes to the reporter (or console if no reporter).
 - **The engine is stateless-by-design** for resume: it re-derives per-file state from qBittorrent + filesystem each cycle, not from the DB.
 - **Only `Active` streams are spooled.** `Error` re-activates on restart; `Paused`/`Completed` do not.
+
+## 17. WebUI Development
+
+## Web UI — Milestone 1 (just completed)
+
+## Goal
+
+First working slice of the Blazor web UI: layout + Settings page + single-admin login.
+
+## What was built
+
+### Core
+
+- `GlobalSpoolSettings.AdminPassword` — plaintext single-admin password.
+- `SettingsManager.LoadSettings()` / `SaveSettings()` / `CreateDefaultSettings()` — non-exiting settings load/save (the old `EnsureDefaultSettingsExist` calls `Environment.Exit`, unsafe for a web host).
+
+### Web (`spool-dat-torrent.web`)
+
+- `Program.cs` — loads shared `config.json` as a singleton, registers Core services (`SpoolDbContext`, `IBitTorrentClientFactory`, `IDatParserService`), adds **cookie auth** (not Identity), defines `POST /auth/login` + `GET /auth/logout`.
+- `MainLayout.razor` — sidebar nav (Streams, Clients, Spool/Pause, About, Settings) + logout button.
+- `Settings.razor` — edits global settings, saves to `config.json`. `DefaultServerProfile` is a `MudSelect` dropdown. Every field has `HelperText`.
+- `Login.razor` + `EmptyLayout.razor` + `RedirectToLogin.razor` — login page + auth guard (`AuthorizeRouteView` in `Routes.razor`).
+- Stub pages — `Streams`, `Clients`, `Spool`, `About`.
+
+## Key decisions
+
+- **No MVVM toolkit** — plain C# fields + `@bind` + `StateHasChanged` (Blazor has no binding engine, so `CommunityToolkit.Mvvm` buys nothing).
+- **"server" = "client"** (BitTorrent client) — used interchangeably.
+- **Server profiles moved OUT of Settings** — their add/remove/edit will live in the **Clients** page (still a stub).
+- **Login is a plain HTML `<form method="post">`** (not MudBlazor), posting to `/auth/login`.
+
+## Bugs fixed this session (important context)
+
+1. `_Imports.razor` was missing `@using MudBlazor` → all `@bind-Value` failed with `RZ9991`.
+2. Logout 404 → added a GET handler (now `GET /auth/logout`).
+3. Login `AmbiguousMatchException` → `@page "/login"` collided with `MapPost("/login")`; moved endpoints to `/auth/*`.
+
+## Outstanding web UI work (next milestones)
+
+- **Clients page** — server profile CRUD, with two rules: block deleting the *last* profile (must keep ≥1), and on deleting the *default* profile, warn + reassign default to first remaining. (Core's `DeleteServerProfile` already reassigns default; the "keep ≥1" guard is new.)
+- **Streams page** — list + live progress.
+- **Spool/Pause page**.
+- **Register `SpoolingEngine` as a hosted `BackgroundService`** (not done yet — engine isn't running in the web app).
+- **`BlazorProgressReporter`** — a singleton implementing `ISpoolingProgressReporter` (the seam already exists in Core).
+
+## Current branch
+
+`webUI`
