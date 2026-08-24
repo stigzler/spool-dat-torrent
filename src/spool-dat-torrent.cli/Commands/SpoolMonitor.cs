@@ -119,7 +119,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         {
                             if (!tasks.TryGetValue(file.Name, out var task))
                             {
-                                task = tasks[file.Name] = ctx.AddTask($"[Grey46]({file.StreamId}) {file.Name}[/]", maxValue: 100);
+                                task = tasks[file.Name] = ctx.AddTask($"[Grey46]({file.StreamId})[/] [Grey62]{file.Name}[/] [Grey46]({FormatSize(file.SizeBytes)})[/]", maxValue: 100);
                             }
                             task.Value = Math.Clamp(file.Progress * 100, 0, 100);
                         }
@@ -142,6 +142,23 @@ namespace SpoolDatTorrent.Cli.Commands
             {
                 AnsiConsole.Cursor.Show();
             }
+        }
+
+        private static string FormatSize(long bytes)
+        {
+            string[] units = { "B", "KB", "MB", "GB", "TB" };
+            double size = bytes;
+            int unit = 0;
+
+            while (size >= 1024 && unit < units.Length - 1)
+            {
+                size /= 1024;
+                unit++;
+            }
+
+            return unit == 0
+                ? $"{bytes} {units[unit]}"
+                : $"{size:0.#} {units[unit]}";
         }
     }
 }

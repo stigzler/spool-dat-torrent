@@ -348,7 +348,7 @@ namespace SpoolDatTorrent.Core.Services
                 TotalCount = desiredFiles.Count,
                 Files = downloading
                     .Concat(readyToMove)
-                    .Select(f => new FileProgressInfo { Name = Path.GetFileName(f.Name), Progress = f.Progress, StreamId = stream.Id })
+                    .Select(f => new FileProgressInfo { Name = Path.GetFileName(f.Name), Progress = f.Progress, StreamId = stream.Id, SizeBytes = f.Size })
                     .ToList()
             };
             ReportStreamSnapshot(snapshot);
