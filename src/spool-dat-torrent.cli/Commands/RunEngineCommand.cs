@@ -1,8 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Spectre.Console;
 using Spectre.Console.Cli;
-using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Helpers;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,21 +18,8 @@ namespace SpoolDatTorrent.Cli.Commands
 
             var serviceProvider = CliServiceProvider.Build();
 
-            // Show server profiles.
-            AnsiConsole.MarkupLine("[bold]BitTorrent Server Profiles[/]");
-            var serversCommand = new Core.Commands.ListServerProfilesCommand(
-                serviceProvider.GetRequiredService<IOptions<GlobalSpoolSettings>>());
-            var servers = await serversCommand.ExecuteAsync(cancellationToken);
-            ServerTableRenderer.Render(servers);
-
-            AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[bold]Current Spooling Streams[/]");
-
-            // List all streams before starting the monitor.
-            var listCommand = new Core.Commands.ListStreamsCommand(
-                serviceProvider.GetRequiredService<IServiceScopeFactory>());
-            var streams = await listCommand.ExecuteAsync(cancellationToken: cancellationToken);
-            StreamTableRenderer.Render(streams);
+            // List server profiles and streams before starting the monitor.
+            await StreamTableRenderer.ShowServersAndStreamsAsync(serviceProvider, cancellationToken);
 
             AnsiConsole.MarkupLine("[cyan]Spooling Torrent/s. Please wait for live updates. Press Ctrl+C to stop...[/]");
 

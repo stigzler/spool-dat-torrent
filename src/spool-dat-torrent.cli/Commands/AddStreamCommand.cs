@@ -131,6 +131,10 @@ namespace SpoolDatTorrent.Cli.Commands
                 }
             }
 
+            // Show the server profiles and streams (like "list") before starting the monitor.
+            AnsiConsole.WriteLine();
+            await StreamTableRenderer.ShowServersAndStreamsAsync(serviceProvider, cancellationToken);
+
             // Start the spooling monitor.
             AnsiConsole.MarkupLine("[cyan]Spooling Torrent. Press Ctrl+C to stop...[/]");
             await SpoolMonitor.RunAsync(serviceProvider, cancellationToken);
