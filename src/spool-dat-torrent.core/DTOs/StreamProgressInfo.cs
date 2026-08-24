@@ -11,6 +11,9 @@ namespace SpoolDatTorrent.Core.DTOs
         public string Name { get; set; } = string.Empty;
         public string TorrentIdentifier { get; set; } = string.Empty;
 
+        /// <summary>The database Id of the stream.</summary>
+        public int StreamId { get; set; }
+
         /// <summary>Lifecycle status of the job (Active, Paused, Completed, Error).</summary>
         public string Status { get; set; } = string.Empty;
 

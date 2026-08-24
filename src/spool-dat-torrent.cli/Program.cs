@@ -36,7 +36,7 @@ namespace SpoolDatTorrent.Cli
                     .WithDescription("Add a stream and start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>.");
 
                 config.AddCommand<CancelStreamCommand>("cancel")
-                    .WithDescription("Cancel a single stream. REQUIRED: -t|--torrent <path|magnet|hash>.");
+                    .WithDescription("Cancel a single stream. REQUIRED: <path|magnet|hash> (positional).");
 
                 config.AddCommand<CancelAllStreamsCommand>("cancel-all")
                     .WithDescription("Cancel all streams (remove every torrent and clear all stream rows).");

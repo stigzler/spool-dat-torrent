@@ -83,7 +83,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         // 1. Job-level completion (moved / total desired files), one task per stream.
                         foreach (var stream in reporter.GetStreams())
                         {
-                            var description = $"[yellow]{stream.Name} — {stream.MovedCount} / {stream.TotalCount} files processed[/]";
+                            var description = $"[yellow]({stream.StreamId}) {stream.Name} — {stream.MovedCount} / {stream.TotalCount} files processed[/]";
                             if (!jobTasks.TryGetValue(stream.TorrentIdentifier, out var jobTask))
                             {
                                 jobTask = jobTasks[stream.TorrentIdentifier] = ctx.AddTask(description, maxValue: stream.TotalCount > 0 ? stream.TotalCount : 1);
@@ -119,7 +119,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         {
                             if (!tasks.TryGetValue(file.Name, out var task))
                             {
-                                task = tasks[file.Name] = ctx.AddTask($"[Grey46]{file.Name}[/]", maxValue: 100);
+                                task = tasks[file.Name] = ctx.AddTask($"[Grey46]({file.StreamId}) {file.Name}[/]", maxValue: 100);
                             }
                             task.Value = Math.Clamp(file.Progress * 100, 0, 100);
                         }

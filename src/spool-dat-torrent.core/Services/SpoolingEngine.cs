@@ -342,12 +342,13 @@ namespace SpoolDatTorrent.Core.Services
             {
                 Name = stream.Name,
                 TorrentIdentifier = stream.TorrentIdentifier,
+                StreamId = stream.Id,
                 Status = stream.Status.ToString(),
                 MovedCount = alreadyMoved.Count,
                 TotalCount = desiredFiles.Count,
                 Files = downloading
                     .Concat(readyToMove)
-                    .Select(f => new FileProgressInfo { Name = Path.GetFileName(f.Name), Progress = f.Progress })
+                    .Select(f => new FileProgressInfo { Name = Path.GetFileName(f.Name), Progress = f.Progress, StreamId = stream.Id })
                     .ToList()
             };
             ReportStreamSnapshot(snapshot);
@@ -359,7 +360,7 @@ namespace SpoolDatTorrent.Core.Services
 
             // STATE: WAIT — files are actively downloading. Do nothing until the whole
             // batch completes, so we never delete the torrent mid-download.
-            LogStatus($"Awaiting completion for {downloading.Count} file/s.");
+            LogStatus($"Awaiting completion point of current downloads.");
             if (downloading.Any())
             {
                 var inProgress = downloading.Select(f => $"{Path.GetFileName(f.Name)} ({f.Progress:P})");

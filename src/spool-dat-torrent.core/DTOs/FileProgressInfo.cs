@@ -10,5 +10,6 @@ namespace SpoolDatTorrent.Core.DTOs
 
         /// <summary>Download progress as a fraction (0.0 - 1.0).</summary>
         public double Progress { get; set; }
+        public int StreamId { get; set; }
     }
 }
