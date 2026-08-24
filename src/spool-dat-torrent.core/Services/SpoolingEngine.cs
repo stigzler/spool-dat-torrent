@@ -245,14 +245,23 @@ namespace SpoolDatTorrent.Core.Services
         {
             var cache = GetMovedFileCache(torrentIdentifier);
 
-            // Fast path: we already confirmed this file is moved — skip the disk stat.
+            string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
+
+            // Fast path: the cache says this file was moved, but only trust it if the
+            // destination file still exists on disk. If it's been deleted (e.g. the user
+            // cleared the destination to re-download), drop it from the cache and treat it
+            // as not moved so it gets re-allocated.
             if (cache.Contains(file.Index))
             {
-                return true;
+                if (File.Exists(destPath) && new FileInfo(destPath).Length == file.Size)
+                {
+                    return true;
+                }
+
+                cache.Remove(file.Index);
             }
 
-            // Slow path (first time only): stat the destination to confirm presence + size.
-            string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
+            // Slow path: stat the destination to confirm presence + size.
             bool isSpooled = File.Exists(destPath) && new FileInfo(destPath).Length == file.Size;
 
             if (isSpooled)
