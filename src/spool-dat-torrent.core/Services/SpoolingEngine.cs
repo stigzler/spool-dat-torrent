@@ -119,6 +119,14 @@ namespace SpoolDatTorrent.Core.Services
                     // Client timed out. Same treatment: log and retry next cycle.
                     LogStatus($"BitTorrent client '{profileName}' timed out. Will retry next cycle.");
                 }
+                catch (Exception ex)
+                {
+                    // Catch-all: any unexpected error (e.g. JSON parsing a non-client response,
+                    // auth failures, etc.) must not kill the background engine task. Log and
+                    // retry this server next cycle so the UI keeps rendering.
+                    Logger.Log($"[Error] Client '{profileName}' failed: {ex}");
+                    LogStatus($"Client '{profileName}' error: {ex.Message}");
+                }
             }
 
             // 4. Report the full stream list (all jobs, not just the processed ones) so a

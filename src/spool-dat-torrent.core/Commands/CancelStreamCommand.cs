@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Interfaces;
 
 namespace SpoolDatTorrent.Core.Commands
@@ -48,10 +49,19 @@ namespace SpoolDatTorrent.Core.Commands
                 ? _settings.DefaultServerProfile
                 : stream.ServerProfileId;
 
-            // 2. Remove the torrent (and its scratch files) from the client.
-            var client = _clientFactory.GetClient(profileName);
-            await client.AuthenticateAsync(cancellationToken);
-            await client.DeleteTorrentAsync(torrentIdentifier, deleteFiles: true, cancellationToken);
+            // 2. Remove the torrent (and its scratch files) from the client. If the client
+            //    is unreachable/failing, log it but still cancel the stream locally so it is
+            //    no longer tracked.
+            try
+            {
+                var client = _clientFactory.GetClient(profileName);
+                await client.AuthenticateAsync(cancellationToken);
+                await client.DeleteTorrentAsync(torrentIdentifier, deleteFiles: true, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"[Error] Failed to remove torrent from server '{profileName}': {ex.Message}");
+            }
 
             // 3. Delete the stream row from the database.
             db.Streams.Remove(stream);

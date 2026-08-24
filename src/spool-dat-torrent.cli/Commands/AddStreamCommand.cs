@@ -15,6 +15,7 @@ namespace SpoolDatTorrent.Cli.Commands
 {
     /// <summary>
     /// Adds a new stream (torrent + DAT) to the database, then starts the spooling monitor.
+    /// The stream creation itself is delegated to the Core command so all UIs share it.
     /// </summary>
     public class AddStreamCommand : AsyncCommand<SpoolCommandSettings>
     {
@@ -27,6 +28,20 @@ namespace SpoolDatTorrent.Cli.Commands
 
             var serviceProvider = CliServiceProvider.Build(settings);
 
+            // Resolve which server profile to use: explicit --server, else the configured default.
+            var globalSettings = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GlobalSpoolSettings>>().Value;
+            string resolvedServer = !string.IsNullOrWhiteSpace(settings.Server)
+                ? settings.Server
+                : globalSettings.DefaultServerProfile;
+
+            if (!globalSettings.TorrentServers.ContainsKey(resolvedServer))
+            {
+                var error = $"Server profile '{resolvedServer}' does not exist. Use 'spool list' to see available profiles, or 'spool add-server' to create one.";
+                AnsiConsole.MarkupLine($"[red]{Markup.Escape(error)}[/]");
+                Logger.Log($"[Error] {error}");
+                return 1;
+            }
+
             // Extract hash and seed the DB.
             string calculatedHash = TorrentMetadataHelper.ResolveInfoHash(settings.Torrent!);
 
@@ -35,7 +50,7 @@ namespace SpoolDatTorrent.Cli.Commands
                 AnsiConsole.MarkupLine("[yellow]Starting fresh: removing torrent from client and clearing saved state...[/]");
 
                 var clientFactory = serviceProvider.GetRequiredService<IBitTorrentClientFactory>();
-                var freshClient = clientFactory.GetClient("LocalQBit");
+                var freshClient = clientFactory.GetClient(resolvedServer);
 
                 try
                 {
@@ -59,77 +74,37 @@ namespace SpoolDatTorrent.Cli.Commands
                 }
             }
 
-            using (var scope = serviceProvider.CreateScope())
+            // Parse optional strategy.
+            SpoolingStrategy? strategy = null;
+            if (!string.IsNullOrWhiteSpace(settings.Strategy))
             {
-                var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
-                await db.Database.EnsureCreatedAsync(cancellationToken);
-
-                var existingStream = await db.Streams.FirstOrDefaultAsync(s => s.TorrentIdentifier == calculatedHash, cancellationToken);
-
-                if (existingStream == null)
+                if (Enum.TryParse<SpoolingStrategy>(settings.Strategy, ignoreCase: true, out var parsed))
                 {
-                    var newStream = new TorrentStreamItem
-                    {
-                        TorrentIdentifier = calculatedHash,
-                        Name = settings.Name ?? GetDefaultStreamName(settings.Torrent!),
-                        DatFilePath = settings.DatPath!,
-                        SpoolingTargetOverride = settings.TargetOverride,
-                        ServerProfileId = "LocalQBit",
-                        Status = StreamLifecycleStatus.Active
-                    };
-
-                    if (settings.Torrent!.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
-                    {
-                        newStream.OriginalMagnet = settings.Torrent;
-                    }
-                    else
-                    {
-                        newStream.OriginalTorrentPath = settings.Torrent;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(settings.Filter))
-                    {
-                        newStream.FileFilter = settings.Filter;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(settings.Strategy))
-                    {
-                        if (Enum.TryParse<SpoolingStrategy>(settings.Strategy, ignoreCase: true, out var parsedStrategy))
-                        {
-                            newStream.Strategy = parsedStrategy;
-                        }
-                        else
-                        {
-                            AnsiConsole.MarkupLine($"[yellow]Warning:[/] Strategy '{Markup.Escape(settings.Strategy)}' not recognized. Falling back to default.");
-                        }
-                    }
-
-                    db.Streams.Add(newStream);
-                    await db.SaveChangesAsync(cancellationToken);
-                    AnsiConsole.MarkupLine($"[green]Added stream:[/] {Markup.Escape(newStream.Name)}");
+                    strategy = parsed;
                 }
                 else
                 {
-                    existingStream.Name = settings.Name ?? existingStream.Name;
-                    existingStream.DatFilePath = settings.DatPath!;
-                    existingStream.SpoolingTargetOverride = settings.TargetOverride;
-                    existingStream.Status = StreamLifecycleStatus.Active;
-
-                    if (!string.IsNullOrWhiteSpace(settings.Filter))
-                    {
-                        existingStream.FileFilter = settings.Filter;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(settings.Strategy) &&
-                        Enum.TryParse<SpoolingStrategy>(settings.Strategy, ignoreCase: true, out var parsedStrategy))
-                    {
-                        existingStream.Strategy = parsedStrategy;
-                    }
-
-                    await db.SaveChangesAsync(cancellationToken);
-                    AnsiConsole.MarkupLine($"[green]Updated existing stream:[/] {Markup.Escape(existingStream.Name)}");
+                    AnsiConsole.MarkupLine($"[yellow]Warning:[/] Strategy '{Markup.Escape(settings.Strategy)}' not recognized. Falling back to default.");
                 }
             }
+
+            var name = settings.Name ?? GetDefaultStreamName(settings.Torrent!);
+            var isMagnet = settings.Torrent!.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase);
+
+            var addCommand = new Core.Commands.AddStreamCommand(serviceProvider.GetRequiredService<IServiceScopeFactory>());
+            var stream = await addCommand.ExecuteAsync(
+                torrentIdentifier: calculatedHash,
+                datFilePath: settings.DatPath!,
+                name: name,
+                spoolingTargetOverride: settings.TargetOverride,
+                // Pass the explicit --server (may be null); Core preserves the existing
+                // profile on update when this is null/empty.
+                serverProfileId: settings.Server,
+                originalTorrentPath: isMagnet ? null : settings.Torrent,
+                originalMagnet: isMagnet ? settings.Torrent : null,
+                filter: settings.Filter,
+                strategy: strategy,
+                cancellationToken: cancellationToken);
 
             // Show the server profiles and streams (like "list") before starting the monitor.
             AnsiConsole.WriteLine();

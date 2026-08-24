@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Spectre.Console;
 using SpoolDatTorrent.Core.Configuration;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Interfaces;
 using SpoolDatTorrent.Core.Services;
 using SpoolDatTorrent.Cli.Services;
@@ -46,7 +47,23 @@ namespace SpoolDatTorrent.Cli.Commands
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    await engine.EvaluateAllStreamsAsync(cancellationToken);
+                    try
+                    {
+                        await engine.EvaluateAllStreamsAsync(cancellationToken);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        // Normal shutdown.
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Never let an unexpected engine error silently kill the background
+                        // task; log it and continue polling so the UI keeps rendering.
+                        Logger.Log($"[Error] Engine evaluation failed: {ex}");
+                        reporter.ReportStatus($"Engine error: {ex.Message}");
+                    }
+
                     await Task.Delay(TimeSpan.FromSeconds(pollInterval), cancellationToken);
                 }
             }, cancellationToken);
@@ -66,7 +83,7 @@ namespace SpoolDatTorrent.Cli.Commands
                     new RemainingTimeColumn(),
                     new PercentageColumn(),
                     new ProgressBarColumn() { Width = 30 },
-                    new TaskDescriptionColumn() { Alignment = Justify.Left }
+                    new TaskDescriptionColumn() { Alignment = Justify.Left, Wrap = false}
                 })
                 .StartAsync(async ctx =>
                 {
@@ -83,7 +100,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         // 1. Job-level completion (moved / total desired files), one task per stream.
                         foreach (var stream in reporter.GetStreams())
                         {
-                            var description = $"[yellow]({stream.StreamId}) {stream.Name} — {stream.MovedCount} / {stream.TotalCount} files processed[/]";
+                            var description = $"[yellow]({stream.StreamId}) {Truncate(stream.Name)} — {stream.MovedCount} / {stream.TotalCount} files processed[/]";
                             if (!jobTasks.TryGetValue(stream.TorrentIdentifier, out var jobTask))
                             {
                                 jobTask = jobTasks[stream.TorrentIdentifier] = ctx.AddTask(description, maxValue: stream.TotalCount > 0 ? stream.TotalCount : 1);
@@ -109,7 +126,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         }
                         if (statusTask != null)
                         {
-                            statusTask.Description = reporter.GetStatus();
+                            statusTask.Description = Truncate(reporter.GetStatus(), 70);
                         }
 
                         // 3. Files (bottom).
@@ -119,7 +136,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         {
                             if (!tasks.TryGetValue(file.Name, out var task))
                             {
-                                task = tasks[file.Name] = ctx.AddTask($"[Grey30]({file.StreamId})[/] [Grey62]{file.Name}[/] [Grey30]({FormatSize(file.SizeBytes)})[/]", maxValue: 100);
+                                task = tasks[file.Name] = ctx.AddTask($"[Grey30]({file.StreamId})[/] [Grey62]{Truncate(file.Name)}[/] [Grey30]({FormatSize(file.SizeBytes)})[/]", maxValue: 100);
                             }
                             task.Value = Math.Clamp(file.Progress * 100, 0, 100);
                         }
@@ -140,8 +157,14 @@ namespace SpoolDatTorrent.Cli.Commands
             }
             finally
             {
+
                 AnsiConsole.Cursor.Show();
             }
+        }
+
+        private static string Truncate(string text, int maxLength = 40)
+        {
+            return text.Length <= maxLength ? text : text[..(maxLength - 1)] + "…";
         }
 
         private static string FormatSize(long bytes)

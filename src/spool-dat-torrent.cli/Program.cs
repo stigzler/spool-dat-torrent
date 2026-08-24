@@ -33,7 +33,7 @@ namespace SpoolDatTorrent.Cli
                     .WithDescription("Start the spooling daemon for all active streams.");
 
                 config.AddCommand<AddStreamCommand>("add")
-                    .WithDescription("Add a stream + start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>.");
+                    .WithDescription("Add a stream + start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>. OPTIONAL: --server <name>.");
 
                 config.AddCommand<CancelStreamCommand>("cancel")
                     .WithDescription("Cancel a single stream. REQUIRED: <path|magnet|hash> (positional).");

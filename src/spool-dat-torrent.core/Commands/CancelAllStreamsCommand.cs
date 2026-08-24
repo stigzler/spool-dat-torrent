@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Interfaces;
 
 namespace SpoolDatTorrent.Core.Commands
@@ -37,17 +38,27 @@ namespace SpoolDatTorrent.Core.Commands
         {
             int removed = 0;
 
-            // 1. Remove every torrent from every configured server profile.
+            // 1. Remove every torrent from every configured server profile. A server that
+            //    is unreachable/failing must not stop us from cancelling the others, so we
+            //    catch and continue per server.
             foreach (var profileName in _settings.TorrentServers.Keys)
             {
-                var client = _clientFactory.GetClient(profileName);
-                await client.AuthenticateAsync(cancellationToken);
-
-                var hashes = await client.GetAllTorrentHashesAsync(cancellationToken);
-                foreach (var hash in hashes)
+                try
                 {
-                    await client.DeleteTorrentAsync(hash, deleteFiles: true, cancellationToken);
-                    removed++;
+                    var client = _clientFactory.GetClient(profileName);
+                    await client.AuthenticateAsync(cancellationToken);
+
+                    var hashes = await client.GetAllTorrentHashesAsync(cancellationToken);
+                    foreach (var hash in hashes)
+                    {
+                        await client.DeleteTorrentAsync(hash, deleteFiles: true, cancellationToken);
+                        removed++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Log and continue so other servers are still cancelled.
+                    Logger.Log($"[Error] Failed to cancel torrents on server '{profileName}': {ex.Message}");
                 }
             }
 

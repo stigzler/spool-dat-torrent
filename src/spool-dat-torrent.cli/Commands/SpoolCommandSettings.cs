@@ -42,6 +42,10 @@ namespace SpoolDatTorrent.Cli.Commands
         [Description("Override the BitTorrent client API key")]
         public string? ClientKey { get; set; }
 
+        [CommandOption("-s|--server <NAME>")]
+        [Description("Name of the server profile to use for this stream. Defaults to the configured default profile.")]
+        public string? Server { get; set; }
+
         [CommandOption("--fresh")]
         [Description("Start fresh: clear saved state and remove the torrent from the client, but keep files already moved to the destination")]
         public bool Fresh { get; set; }
