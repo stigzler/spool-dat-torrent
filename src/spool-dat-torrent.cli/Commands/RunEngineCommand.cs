@@ -1,6 +1,8 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Helpers;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +10,7 @@ using System.Threading.Tasks;
 namespace SpoolDatTorrent.Cli.Commands
 {
     /// <summary>
-    /// Default command: lists all streams, then starts the spooling monitor.
+    /// Default command: lists server profiles and streams, then starts the spooling monitor.
     /// </summary>
     public class RunEngineCommand : AsyncCommand<MonitorSettings>
     {
@@ -17,6 +19,16 @@ namespace SpoolDatTorrent.Cli.Commands
             Logger.Clear();
 
             var serviceProvider = CliServiceProvider.Build();
+
+            // Show server profiles.
+            AnsiConsole.MarkupLine("[bold]BitTorrent Server Profiles[/]");
+            var serversCommand = new Core.Commands.ListServerProfilesCommand(
+                serviceProvider.GetRequiredService<IOptions<GlobalSpoolSettings>>());
+            var servers = await serversCommand.ExecuteAsync(cancellationToken);
+            ServerTableRenderer.Render(servers);
+
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[bold]Current Spooling Streams[/]");
 
             // List all streams before starting the monitor.
             var listCommand = new Core.Commands.ListStreamsCommand(

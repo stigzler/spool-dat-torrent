@@ -360,7 +360,7 @@ namespace SpoolDatTorrent.Core.Services
 
             // STATE: WAIT — files are actively downloading. Do nothing until the whole
             // batch completes, so we never delete the torrent mid-download.
-            LogStatus($"Awaiting completion point of current downloads.");
+            LogStatus($"Awaiting completion of current download batch...");
             if (downloading.Any())
             {
                 var inProgress = downloading.Select(f => $"{Path.GetFileName(f.Name)} ({f.Progress:P})");

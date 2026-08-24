@@ -119,7 +119,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         {
                             if (!tasks.TryGetValue(file.Name, out var task))
                             {
-                                task = tasks[file.Name] = ctx.AddTask($"[Grey46]({file.StreamId})[/] [Grey62]{file.Name}[/] [Grey46]({FormatSize(file.SizeBytes)})[/]", maxValue: 100);
+                                task = tasks[file.Name] = ctx.AddTask($"[Grey30]({file.StreamId})[/] [Grey62]{file.Name}[/] [Grey30]({FormatSize(file.SizeBytes)})[/]", maxValue: 100);
                             }
                             task.Value = Math.Clamp(file.Progress * 100, 0, 100);
                         }
