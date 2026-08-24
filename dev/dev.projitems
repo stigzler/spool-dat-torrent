@@ -10,5 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)docs\draftUserGuide.md" />
+    <None Include="$(MSBuildThisFileDirectory)docs\PROJECT_KNOWLEDGE_BASE.md" />
+    <None Include="$(MSBuildThisFileDirectory)docs\wireframes\MainPageAndStreams.md" />
   </ItemGroup>
 </Project>
