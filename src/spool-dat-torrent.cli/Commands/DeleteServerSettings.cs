@@ -6,7 +6,7 @@ namespace SpoolDatTorrent.Cli.Commands
 {
     public class DeleteServerSettings : CommandSettings
     {
-        [CommandArgument(0, "<NAME>")]
+        [CommandArgument(0, "<name>")]
         [Description("Name of the server profile to delete (Mandatory)")]
         public string? Name { get; set; }
 

@@ -9,8 +9,16 @@ namespace SpoolDatTorrent.Core.Configuration
         public string DefaultServerProfile { get; set; } = "LocalQBit";
         public Dictionary<string, TorrentServerProfile> TorrentServers { get; set; } = new();
         public string DefaultSpoolingTarget { get; set; } = string.Empty;
-        public int PollIntervalSeconds { get; set; } = 15;
+        public int PollIntervalSeconds { get; set; } = 2;
         public int SettlingTimeSeconds { get; set; } = 30;
+
+        /// <summary>
+        /// Directory where per-stream copies of the .torrent and .dat files are cached,
+        /// so streams remain usable if the user later deletes the original files. If empty,
+        /// a default "cache" folder is resolved next to the settings file (or via the
+        /// SPOOL_CACHE_DIR environment variable).
+        /// </summary>
+        public string CacheDirectory { get; set; } = string.Empty;
 
         /// <summary>
         /// Number of consecutive connection failures to a BitTorrent server before its

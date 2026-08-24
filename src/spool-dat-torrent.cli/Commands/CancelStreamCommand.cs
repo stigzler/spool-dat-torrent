@@ -26,7 +26,7 @@ namespace SpoolDatTorrent.Cli.Commands
 
             var services = new ServiceCollection();
             services.Configure<GlobalSpoolSettings>(configuration);
-            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=cli_test.db"));
+            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
             services.AddHttpClient();
             services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
 

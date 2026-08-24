@@ -15,10 +15,35 @@ namespace SpoolDatTorrent.Core.Configuration
             if (!string.IsNullOrWhiteSpace(envPath))
             {
                 Directory.CreateDirectory(envPath);
-                return Path.Combine(envPath, "spool_settings.json");
+                return Path.Combine(envPath, "config.json");
             }
 
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "spool_settings.json");
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
+        }
+
+        /// <summary>
+        /// Resolve the directory where per-stream source files (.torrent/.dat) are cached.
+        /// Priority: explicit <paramref name="configuredPath"/> > SPOOL_CACHE_DIR env var >
+        /// a "cache" folder beside the settings file. The directory is created if missing.
+        /// </summary>
+        public static string GetCacheDirectory(string configuredPath)
+        {
+            if (!string.IsNullOrWhiteSpace(configuredPath))
+            {
+                Directory.CreateDirectory(configuredPath);
+                return configuredPath;
+            }
+
+            var envPath = Environment.GetEnvironmentVariable("SPOOL_CACHE_DIR");
+            if (!string.IsNullOrWhiteSpace(envPath))
+            {
+                Directory.CreateDirectory(envPath);
+                return envPath;
+            }
+
+            var defaultPath = Path.Combine(Path.GetDirectoryName(GetSettingsPath()) ?? AppDomain.CurrentDomain.BaseDirectory, "cache");
+            Directory.CreateDirectory(defaultPath);
+            return defaultPath;
         }
 
         public static void EnsureDefaultSettingsExist()

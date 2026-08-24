@@ -16,20 +16,24 @@ namespace SpoolDatTorrent.Cli.Commands
         {
             var serviceProvider = CliServiceProvider.Build();
 
-            string hash = TorrentMetadataHelper.ResolveInfoHash(settings.Torrent!);
-
             var command = new Core.Commands.RetryStreamCommand(
                 serviceProvider.GetRequiredService<IServiceScopeFactory>());
 
-            var retried = await command.ExecuteAsync(hash, cancellationToken);
+            string identifier = settings.Identifier!;
+
+            // A plain integer is treated as a stream Id; anything else as a torrent
+            // path/magnet/info-hash.
+            bool retried = int.TryParse(identifier, out int streamId)
+                ? await command.ExecuteByIdAsync(streamId, cancellationToken)
+                : await command.ExecuteAsync(TorrentMetadataHelper.ResolveInfoHash(identifier), cancellationToken);
 
             if (retried)
             {
-                AnsiConsole.MarkupLine($"[green]Stream re-activated for retry:[/] {Markup.Escape(hash)}");
+                AnsiConsole.MarkupLine($"[green]Stream re-activated for retry:[/] {Markup.Escape(identifier)}");
             }
             else
             {
-                AnsiConsole.MarkupLine($"[red]No stream found for:[/] {Markup.Escape(hash)}");
+                AnsiConsole.MarkupLine($"[red]No stream found for:[/] {Markup.Escape(identifier)}");
                 return 1;
             }
 

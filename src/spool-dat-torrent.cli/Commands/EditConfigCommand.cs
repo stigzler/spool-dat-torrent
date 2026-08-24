@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace SpoolDatTorrent.Cli.Commands
 {
     /// <summary>
-    /// Opens the spool_settings.json file in the system's default text editor.
+    /// Opens the config.json file in the system's default text editor.
     /// </summary>
     public class EditConfigCommand : AsyncCommand
     {

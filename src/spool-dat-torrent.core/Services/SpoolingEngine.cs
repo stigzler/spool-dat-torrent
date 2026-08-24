@@ -342,6 +342,15 @@ namespace SpoolDatTorrent.Core.Services
             }
         }
 
+        private string GetActiveDatPath(TorrentStreamItem stream)
+        {
+            // Prefer the cached .dat copy (robust to the original being deleted), falling
+            // back to the original path.
+            return !string.IsNullOrWhiteSpace(stream.CachedDatPath)
+                ? stream.CachedDatPath
+                : stream.DatFilePath;
+        }
+
         private async Task ProcessStreamAsync(
                             TorrentStreamItem stream,
                             long allocatedCapBytes,
@@ -350,7 +359,7 @@ namespace SpoolDatTorrent.Core.Services
                             SpoolDbContext dbContext,
                             CancellationToken cancellationToken)
         {
-            var desiredGames = await GetDesiredGamesAsync(stream.DatFilePath, cancellationToken);
+            var desiredGames = await GetDesiredGamesAsync(GetActiveDatPath(stream), cancellationToken);
 
             // RECOVERY: if the torrent is missing from the client (e.g. the app was closed
             // mid-rebuild, after delete but before re-add), re-add it and re-allocate so we
@@ -402,12 +411,16 @@ namespace SpoolDatTorrent.Core.Services
                 {
                     downloading.Add(file);
                 }
-                else if (file.Priority > 0)
+                else
                 {
-                    // Priority > 0 but progress == 0: not started yet (first run / freshly re-added)
+                    // Not yet on disk, not currently downloading. This includes files with
+                    // priority 0 (e.g. demoted after being moved, or skipped by the cap).
+                    // Treat them as pending so they get re-allocated — otherwise a resumed
+                    // stream whose destination files were deleted would be seen as complete
+                    // immediately (nothing in downloading/ready/pending). AllocateBatchAsync
+                    // re-applies the cap, so re-selecting them is correct.
                     pending.Add(file);
                 }
-                // else: priority == 0 => skipped, ignore
             }
 
             // Emit a progress snapshot for this stream: overall job progress (moved vs
@@ -502,7 +515,7 @@ namespace SpoolDatTorrent.Core.Services
             }
 
             // STATE: COMPLETE — nothing left to download or move
-            LogStatus($"Stream '{stream.Name}' completed!");
+            LogStatus($"Stream ({stream.Id}) '{stream.Name}' completed!");
             stream.Status = StreamLifecycleStatus.Completed;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -729,13 +742,17 @@ namespace SpoolDatTorrent.Core.Services
             await WaitForScratchFilesDeletedAsync(torrentSavePath, torrentFiles, profileSettings, cancellationToken);
 
             // 2. Re-add the SAME torrent source (same info-hash => same swarm), paused.
-            string? source = !string.IsNullOrWhiteSpace(stream.OriginalTorrentPath)
-                ? stream.OriginalTorrentPath
-                : stream.OriginalMagnet;
+            //    Prefer the cached .torrent copy (which is robust to the original being
+            //    deleted), falling back to the original path or magnet.
+            string? source = !string.IsNullOrWhiteSpace(stream.CachedTorrentPath)
+                ? stream.CachedTorrentPath
+                : !string.IsNullOrWhiteSpace(stream.OriginalTorrentPath)
+                    ? stream.OriginalTorrentPath
+                    : stream.OriginalMagnet;
 
             if (string.IsNullOrWhiteSpace(source))
             {
-                LogStatus($"Cannot rebuild torrent: no original .torrent path or magnet stored for stream '{stream.Name}'.");
+                LogStatus($"Cannot rebuild torrent: no .torrent source (cached/original/magnet) stored for stream '{stream.Name}'.");
                 return;
             }
 
@@ -782,9 +799,12 @@ namespace SpoolDatTorrent.Core.Services
             IBitTorrentClient torrentClient,
             CancellationToken cancellationToken)
         {
-            string? source = !string.IsNullOrWhiteSpace(stream.OriginalTorrentPath)
-                ? stream.OriginalTorrentPath
-                : stream.OriginalMagnet;
+            // Prefer the cached .torrent copy, falling back to the original path or magnet.
+            string? source = !string.IsNullOrWhiteSpace(stream.CachedTorrentPath)
+                ? stream.CachedTorrentPath
+                : !string.IsNullOrWhiteSpace(stream.OriginalTorrentPath)
+                    ? stream.OriginalTorrentPath
+                    : stream.OriginalMagnet;
 
             if (string.IsNullOrWhiteSpace(source))
             {

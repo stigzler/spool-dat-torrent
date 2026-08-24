@@ -13,6 +13,12 @@ namespace SpoolDatTorrent.Core.Models
         public string DatFilePath { get; set; } = string.Empty;
         public string? OriginalTorrentPath { get; set; }
         public string? OriginalMagnet { get; set; }
+
+        /// <summary>Cached copy of the .torrent file, set when the stream is added. Null if not cached yet.</summary>
+        public string? CachedTorrentPath { get; set; }
+
+        /// <summary>Cached copy of the .dat file, set when the stream is added. Null if not cached yet.</summary>
+        public string? CachedDatPath { get; set; }
         public string? SpoolingTargetOverride { get; set; }
         public SpoolingStrategy Strategy { get; set; } = SpoolingStrategy.MoveFiles;
         public string FileFilter { get; set; } = "*.*";

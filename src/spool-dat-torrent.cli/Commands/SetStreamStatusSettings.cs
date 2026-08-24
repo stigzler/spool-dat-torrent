@@ -4,10 +4,10 @@ using System.ComponentModel;
 
 namespace SpoolDatTorrent.Cli.Commands
 {
-    public class RetryStreamSettings : CommandSettings
+    public class SetStreamStatusSettings : CommandSettings
     {
         [CommandArgument(0, "<id|path|magnet|hash>")]
-        [Description("Stream Id, or path/magnet/info-hash of the stream to retry (Mandatory)")]
+        [Description("Stream Id, or path/magnet/info-hash of the stream (Mandatory)")]
         public string? Identifier { get; set; }
 
         public override ValidationResult Validate()

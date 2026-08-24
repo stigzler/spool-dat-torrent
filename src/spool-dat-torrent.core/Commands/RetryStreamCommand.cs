@@ -35,6 +35,29 @@ namespace SpoolDatTorrent.Core.Commands
                 return false;
             }
 
+            return await ReActivateAsync(db, stream, cancellationToken);
+        }
+
+        /// <summary>
+        /// Set a single stream back to Active by its numeric database Id.
+        /// </summary>
+        /// <returns>True if a stream was found and re-activated; false otherwise.</returns>
+        public async Task<bool> ExecuteByIdAsync(int streamId, CancellationToken cancellationToken = default)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
+            var stream = await db.Streams.FirstOrDefaultAsync(s => s.Id == streamId, cancellationToken);
+
+            if (stream == null)
+            {
+                return false;
+            }
+
+            return await ReActivateAsync(db, stream, cancellationToken);
+        }
+
+        private async Task<bool> ReActivateAsync(SpoolDbContext db, TorrentStreamItem stream, CancellationToken cancellationToken)
+        {
             stream.Status = StreamLifecycleStatus.Active;
             await db.SaveChangesAsync(cancellationToken);
             return true;

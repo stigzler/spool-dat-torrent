@@ -25,7 +25,7 @@ namespace SpoolDatTorrent.Cli.Commands
 
             var services = new ServiceCollection();
             services.Configure<GlobalSpoolSettings>(configuration);
-            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=cli_test.db"));
+            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
             services.AddHttpClient();
             services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
 
@@ -43,7 +43,7 @@ namespace SpoolDatTorrent.Cli.Commands
             ServerTableRenderer.Render(servers);
 
             AnsiConsole.WriteLine();
-            AnsiConsole.MarkupLine("[bold]Current Spooling Streams[/]");
+            AnsiConsole.MarkupLine("[bold]Stream Status[/]");
             StreamTableRenderer.Render(streams);
             return 0;
         }

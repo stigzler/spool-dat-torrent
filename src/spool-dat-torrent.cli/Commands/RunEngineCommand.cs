@@ -21,7 +21,7 @@ namespace SpoolDatTorrent.Cli.Commands
             // List server profiles and streams before starting the monitor.
             await StreamTableRenderer.ShowServersAndStreamsAsync(serviceProvider, cancellationToken);
 
-            AnsiConsole.MarkupLine("[cyan]Spooling Torrent/s. Please wait for live updates. Press Ctrl+C to stop...[/]");
+            AnsiConsole.MarkupLine("[cyan]Spooling Torrent/s. Please wait for live updates. Log for details. Press Ctrl+C to stop...[/]");
 
             await SpoolMonitor.RunAsync(serviceProvider, cancellationToken);
 

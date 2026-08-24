@@ -19,6 +19,7 @@ namespace SpoolDatTorrent.Core.Commands
         private readonly IBitTorrentClientFactory _clientFactory;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly GlobalSpoolSettings _settings;
+        private readonly StreamFileCache _fileCache;
 
         public CancelStreamCommand(
             IBitTorrentClientFactory clientFactory,
@@ -28,6 +29,7 @@ namespace SpoolDatTorrent.Core.Commands
             _clientFactory = clientFactory;
             _scopeFactory = scopeFactory;
             _settings = settings.Value;
+            _fileCache = new StreamFileCache(settings);
         }
 
         /// <summary>
@@ -87,7 +89,10 @@ namespace SpoolDatTorrent.Core.Commands
                 Logger.Log($"[Error] Failed to remove torrent from server '{profileName}': {ex.Message}");
             }
 
-            // 3. Delete the stream row from the database.
+            // 3. Delete the cached source files for this stream.
+            _fileCache.DeleteCachedFiles(stream.CachedTorrentPath, stream.CachedDatPath);
+
+            // 4. Delete the stream row from the database.
             db.Streams.Remove(stream);
             await db.SaveChangesAsync(cancellationToken);
             return true;

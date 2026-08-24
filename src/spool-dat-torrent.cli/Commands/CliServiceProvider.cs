@@ -40,7 +40,7 @@ namespace SpoolDatTorrent.Cli.Commands
                 });
             }
 
-            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=cli_test.db"));
+            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
             services.AddHttpClient();
             services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
             services.AddTransient<IDatParserService, LogiqxDatParserService>();

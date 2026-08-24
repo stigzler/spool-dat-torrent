@@ -27,6 +27,7 @@ namespace SpoolDatTorrent.Core.Commands
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
+            await db.Database.EnsureCreatedAsync(cancellationToken);
 
             var query = db.Streams.AsNoTracking().AsQueryable();
 

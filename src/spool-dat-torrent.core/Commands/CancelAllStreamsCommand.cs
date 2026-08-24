@@ -19,6 +19,7 @@ namespace SpoolDatTorrent.Core.Commands
         private readonly IBitTorrentClientFactory _clientFactory;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly GlobalSpoolSettings _settings;
+        private readonly StreamFileCache _fileCache;
 
         public CancelAllStreamsCommand(
             IBitTorrentClientFactory clientFactory,
@@ -28,6 +29,7 @@ namespace SpoolDatTorrent.Core.Commands
             _clientFactory = clientFactory;
             _scopeFactory = scopeFactory;
             _settings = settings.Value;
+            _fileCache = new StreamFileCache(settings);
         }
 
         /// <summary>
@@ -62,10 +64,16 @@ namespace SpoolDatTorrent.Core.Commands
                 }
             }
 
-            // 2. Clear all stream rows from the database.
+            // 2. Clear all stream rows from the database, and delete each stream's cached files.
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
             var allStreams = await db.Streams.ToListAsync(cancellationToken);
+
+            foreach (var stream in allStreams)
+            {
+                _fileCache.DeleteCachedFiles(stream.CachedTorrentPath, stream.CachedDatPath);
+            }
+
             db.Streams.RemoveRange(allStreams);
             await db.SaveChangesAsync(cancellationToken);
 

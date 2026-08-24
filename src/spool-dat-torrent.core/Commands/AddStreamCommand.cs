@@ -16,6 +16,7 @@ namespace SpoolDatTorrent.Core.Commands
     {
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly GlobalSpoolSettings _settings;
+        private readonly StreamFileCache _fileCache;
 
         public AddStreamCommand(
             IServiceScopeFactory scopeFactory,
@@ -23,6 +24,7 @@ namespace SpoolDatTorrent.Core.Commands
         {
             _scopeFactory = scopeFactory;
             _settings = settings.Value;
+            _fileCache = new StreamFileCache(settings);
         }
 
         /// <summary>
@@ -61,6 +63,14 @@ namespace SpoolDatTorrent.Core.Commands
                     existing.ServerProfileId = serverProfileId;
                 }
 
+                // Re-cache the source files (overwriting any prior cached copies) so updated
+                // sources take effect. Magnet-only streams keep their cached torrent if any.
+                var (cachedTorrent, cachedDat) = _fileCache.CacheFiles(torrentIdentifier, originalTorrentPath ?? existing.OriginalTorrentPath, datFilePath);
+                if (cachedTorrent != null) existing.CachedTorrentPath = cachedTorrent;
+                if (cachedDat != null) existing.CachedDatPath = cachedDat;
+                if (!string.IsNullOrWhiteSpace(originalTorrentPath)) existing.OriginalTorrentPath = originalTorrentPath;
+                if (!string.IsNullOrWhiteSpace(originalMagnet)) existing.OriginalMagnet = originalMagnet;
+
                 existing.Status = StreamLifecycleStatus.Active;
                 if (!string.IsNullOrWhiteSpace(filter)) existing.FileFilter = filter;
                 if (strategy.HasValue) existing.Strategy = strategy.Value;
@@ -75,6 +85,10 @@ namespace SpoolDatTorrent.Core.Commands
                 ? serverProfileId
                 : _settings.DefaultServerProfile;
 
+            // Copy the source files into the cache so the stream is independent of the
+            // original paths (which the user may delete later).
+            var cacheResult = _fileCache.CacheFiles(torrentIdentifier, originalTorrentPath, datFilePath);
+
             var stream = new TorrentStreamItem
             {
                 Id = await GetLowestFreeStreamIdAsync(db, cancellationToken),
@@ -86,6 +100,8 @@ namespace SpoolDatTorrent.Core.Commands
                 Status = StreamLifecycleStatus.Active,
                 OriginalTorrentPath = originalTorrentPath,
                 OriginalMagnet = originalMagnet,
+                CachedTorrentPath = cacheResult.CachedTorrentPath,
+                CachedDatPath = cacheResult.CachedDatPath,
                 FileFilter = string.IsNullOrWhiteSpace(filter) ? "*.*" : filter,
                 Strategy = strategy ?? SpoolingStrategy.MoveFiles
             };

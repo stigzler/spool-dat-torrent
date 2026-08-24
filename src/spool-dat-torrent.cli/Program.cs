@@ -29,32 +29,38 @@ namespace SpoolDatTorrent.Cli
             {
                 config.SetApplicationName("SpoolDatTorrent");
 
+                config.AddCommand<ListStreamsCommand>("list")
+                    .WithDescription("List all servers + streams. OPTIONAL: -s|--status <Active|Paused|Completed|Error>.");
+
                 config.AddCommand<RunEngineCommand>("spool")
                     .WithDescription("Start the spooling daemon for all active streams.");
 
                 config.AddCommand<AddStreamCommand>("add")
-                    .WithDescription("Add a stream + start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>. OPTIONAL: --server <name>.");
+                    .WithDescription("Add a stream + start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>. OPTIONAL: --server <name>.");                
+                
+                config.AddCommand<PauseStreamCommand>("pause")
+                    .WithDescription("Pause a stream (stop spooling it). REQUIRED: <stream-id> or <path|magnet|hash>.");
 
-                config.AddCommand<CancelStreamCommand>("cancel")
-                    .WithDescription("Cancel a single stream. REQUIRED: <stream-id> or <path|magnet|hash> (positional).");
+                config.AddCommand<ResumeStreamCommand>("resume")
+                    .WithDescription("Resume a paused stream. REQUIRED: <stream-id> or <path|magnet|hash>.");
 
                 config.AddCommand<RetryStreamCommand>("retry")
-                    .WithDescription("Re-activate an errored stream for retry. REQUIRED: <path|magnet|hash> (positional).");
+                    .WithDescription("Re-activate an errored stream for retry. REQUIRED: <stream-id> or <path|magnet|hash>.");
+
+                config.AddCommand<CancelStreamCommand>("cancel")
+                    .WithDescription("Cancel a single stream. REQUIRED: <stream-id> or <path|magnet|hash>).");
 
                 config.AddCommand<CancelAllStreamsCommand>("cancel-all")
                     .WithDescription("Cancel all streams (remove every torrent and clear all stream rows).");
-
-                config.AddCommand<ListStreamsCommand>("list")
-                    .WithDescription("List all servers + streams. OPTIONAL: -s|--status <Active|Paused|Completed|Error>.");
 
                 config.AddCommand<AddServerCommand>("add-server")
                     .WithDescription("Create a new BitTorrent server profile in the settings file.");
 
                 config.AddCommand<DeleteServerCommand>("delete-server")
-                    .WithDescription("Delete a BitTorrent server profile by name. REQUIRED: <name> (positional).");
+                    .WithDescription("Delete a BitTorrent server profile by name. REQUIRED: <name>.");
 
-                config.AddCommand<EditConfigCommand>("edit-config")
-                    .WithDescription("Open the settings file in the system's default text editor.");
+                config.AddCommand<EditConfigCommand>("config")
+                    .WithDescription("Open the config file in the system's default text editor.");
 
                 // Show how to get command-specific help in the top-level help output.
                 config.AddExample(new[] { "add", "-h" ,": Show extended help for add"});
