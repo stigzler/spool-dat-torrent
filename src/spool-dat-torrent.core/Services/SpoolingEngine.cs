@@ -24,20 +24,34 @@ namespace SpoolDatTorrent.Core.Services
         private readonly IDatParserService _datParser;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly GlobalSpoolSettings _settings;
+        private readonly ISpoolingProgressReporter? _progressReporter;
 
         // Cache the DAT game names per stream so we don't re-parse the XML on every poll.
         private readonly ConcurrentDictionary<string, HashSet<string>> _datCache = new(StringComparer.OrdinalIgnoreCase);
+
+        // Latest per-stream progress snapshots, keyed by torrent identifier. Emitted to the
+        // optional progress reporter at the end of each evaluation cycle.
+        private readonly ConcurrentDictionary<string, StreamProgressInfo> _progressSnapshots = new(StringComparer.OrdinalIgnoreCase);
+
+        // Cache of file indices already moved to the destination, keyed by torrent identifier.
+        // Once a file is confirmed moved (exists at destination with correct size), we stop
+        // re-statting it on every poll cycle — this is the dominant per-cycle disk cost for
+        // large torrents (thousands of files). A file is added here when first detected as
+        // moved, or when we successfully copy it.
+        private readonly ConcurrentDictionary<string, HashSet<int>> _movedFileCache = new(StringComparer.OrdinalIgnoreCase);
 
         public SpoolingEngine(
             IServiceScopeFactory scopeFactory,
             IBitTorrentClientFactory clientFactory,
             IDatParserService datParser,
-            IOptions<GlobalSpoolSettings> settings)
+            IOptions<GlobalSpoolSettings> settings,
+            ISpoolingProgressReporter? progressReporter = null)
         {
             _scopeFactory = scopeFactory;
             _clientFactory = clientFactory;
             _datParser = datParser;
             _settings = settings.Value;
+            _progressReporter = progressReporter;
         }
 
         // Used by future Desktop App: Can be called on-demand by a UI button or on app startup
@@ -46,18 +60,15 @@ namespace SpoolDatTorrent.Core.Services
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
 
-            // 1. Fetch all Active streams from the database, including their tracked files
-            var activeStreams = await dbContext.Streams
-                .Include(s => s.Files)
+            // 1. Fetch ALL streams (for reporting) and the Active subset (for processing).
+            //    Reporting the full list lets a dashboard show every job, including ones
+            //    that are paused/completed or not yet touched this run.
+            var allStreams = await dbContext.Streams.ToListAsync(cancellationToken);
+            var activeStreams = allStreams
                 .Where(s => s.Status == StreamLifecycleStatus.Active)
-                .ToListAsync(cancellationToken);
+                .ToList();
 
-            if (!activeStreams.Any())
-            {
-                return; // Nothing to do, go back to sleep
-            }
-
-            // 2. Group the streams by their designated Server Profile
+            // 2. Group the active streams by their designated Server Profile
             var streamsByServer = activeStreams.GroupBy(s =>
                 string.IsNullOrWhiteSpace(s.ServerProfileId) ? _settings.DefaultServerProfile : s.ServerProfileId);
 
@@ -101,14 +112,86 @@ namespace SpoolDatTorrent.Core.Services
                 {
                     // Client unreachable (e.g. qBittorrent is down). Log and retry next cycle
                     // rather than crashing the host (CLI, Docker service, or desktop app).
-                    Logger.Log($"[Warning] BitTorrent client '{profileName}' unreachable: {ex.Message}. Will retry next cycle.", echoToConsole: true);
+                    LogStatus($"BitTorrent client '{profileName}' unreachable: {ex.Message}. Will retry next cycle.");
                 }
                 catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
                     // Client timed out. Same treatment: log and retry next cycle.
-                    Logger.Log($"[Warning] BitTorrent client '{profileName}' timed out. Will retry next cycle.", echoToConsole: true);
+                    LogStatus($"BitTorrent client '{profileName}' timed out. Will retry next cycle.");
                 }
             }
+
+            // 4. Report the full stream list (all jobs, not just the processed ones) so a
+            //    dashboard can render every job with its latest known progress.
+            ReportAllStreams(allStreams);
+        }
+
+        private void LogStatus(string message)
+        {
+            // Always write to the log file.
+            Logger.Log(message, echoToConsole: false);
+
+            if (_progressReporter != null)
+            {
+                // Route through the reporter so a live display can render it cleanly.
+                // Writing to the raw console here would corrupt Spectre's Live output.
+                _progressReporter.ReportStatus(message);
+            }
+            else
+            {
+                // No live display attached (e.g. Docker service): echo to the console.
+                Console.WriteLine(message);
+            }
+        }
+
+        private void ReportStreamSnapshot(StreamProgressInfo snapshot)
+        {
+            _progressSnapshots[snapshot.TorrentIdentifier] = snapshot;
+        }
+
+        private void ReportAllStreams(IReadOnlyList<TorrentStreamItem> allStreams)
+        {
+            if (_progressReporter == null) return;
+
+            var list = allStreams
+                .Select(s => _progressSnapshots.TryGetValue(s.TorrentIdentifier, out var snap)
+                    ? snap
+                    : new StreamProgressInfo { Name = s.Name, TorrentIdentifier = s.TorrentIdentifier, Status = s.Status.ToString() })
+                .ToList();
+
+            _progressReporter.ReportStreams(list);
+        }
+
+        private HashSet<int> GetMovedFileCache(string torrentIdentifier)
+        {
+            return _movedFileCache.GetOrAdd(torrentIdentifier, _ => new HashSet<int>());
+        }
+
+        private bool IsAlreadyMoved(string torrentIdentifier, TorrentFileDto file, string destinationRoot, string prefixToStrip)
+        {
+            var cache = GetMovedFileCache(torrentIdentifier);
+
+            // Fast path: we already confirmed this file is moved — skip the disk stat.
+            if (cache.Contains(file.Index))
+            {
+                return true;
+            }
+
+            // Slow path (first time only): stat the destination to confirm presence + size.
+            string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
+            bool isSpooled = File.Exists(destPath) && new FileInfo(destPath).Length == file.Size;
+
+            if (isSpooled)
+            {
+                cache.Add(file.Index);
+            }
+
+            return isSpooled;
+        }
+
+        private void MarkMoved(string torrentIdentifier, int fileIndex)
+        {
+            GetMovedFileCache(torrentIdentifier).Add(fileIndex);
         }
 
         private string TranslateToLocalPath(string torrentSavePath, string fileRelativeName, TorrentServerProfile profile)
@@ -231,8 +314,7 @@ namespace SpoolDatTorrent.Core.Services
 
             foreach (var file in desiredFiles)
             {
-                string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
-                bool isSpooled = File.Exists(destPath) && new FileInfo(destPath).Length == file.Size;
+                bool isSpooled = IsAlreadyMoved(stream.TorrentIdentifier, file, destinationRoot, prefixToStrip);
 
                 if (isSpooled)
                 {
@@ -254,6 +336,22 @@ namespace SpoolDatTorrent.Core.Services
                 // else: priority == 0 => skipped, ignore
             }
 
+            // Emit a progress snapshot for this stream: overall job progress (moved vs
+            // total desired) plus the current batch's files and their download progress.
+            var snapshot = new StreamProgressInfo
+            {
+                Name = stream.Name,
+                TorrentIdentifier = stream.TorrentIdentifier,
+                Status = stream.Status.ToString(),
+                MovedCount = alreadyMoved.Count,
+                TotalCount = desiredFiles.Count,
+                Files = downloading
+                    .Concat(readyToMove)
+                    .Select(f => new FileProgressInfo { Name = Path.GetFileName(f.Name), Progress = f.Progress })
+                    .ToList()
+            };
+            ReportStreamSnapshot(snapshot);
+
             // STATE: WAIT — files are actively downloading. Do nothing until the whole
             // batch completes, so we never delete the torrent mid-download.
             if (downloading.Any())
@@ -271,7 +369,7 @@ namespace SpoolDatTorrent.Core.Services
             // rebuild boundary pieces into .parts files for the files we skip.
             if (readyToMove.Any())
             {
-                Logger.Log($"[Spooling] Halting torrent to copy {readyToMove.Count} completed files...", echoToConsole: true);
+                LogStatus($"Halting torrent to copy {readyToMove.Count} completed files...");
                 await torrentClient.PauseTorrentAsync(stream.TorrentIdentifier, cancellationToken);
                 await Task.Delay(1000, cancellationToken);
 
@@ -282,22 +380,23 @@ namespace SpoolDatTorrent.Core.Services
                     string destinationPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
                     string sourcePath = TranslateToLocalPath(torrentSavePath, file.Name, profileSettings);
 
-                    Logger.Log($"[Spooling] Attempting copy: {file.Name}...", echoToConsole: true);
+                    LogStatus($"Moving file: {Path.GetFileName(file.Name)}...");
 
                     try
                     {
                         await CopyAndVerifyAsync(sourcePath, destinationPath, file.Size, cancellationToken);
                         copiedIndices.Add(file.Index);
+                        MarkMoved(stream.TorrentIdentifier, file.Index);
                     }
                     catch (IOException ex)
                     {
-                        Logger.Log($"[Error] Copy failed (will retry next loop): {ex.Message}", echoToConsole: true);
+                        LogStatus($"Move failed (will retry next loop)");
                     }
                 }
 
                 if (copiedIndices.Any())
                 {
-                    Logger.Log($"[Spooling] Copied {copiedIndices.Count} files. Rebuilding torrent for next batch...", echoToConsole: true);
+                    LogStatus($"Moved {copiedIndices.Count} files. Rebuilding torrent for next batch...");
                     await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
                 }
                 else
@@ -314,14 +413,14 @@ namespace SpoolDatTorrent.Core.Services
             // (torrent added paused) or a freshly re-added torrent. Set priorities and resume.
             if (pending.Any())
             {
-                Logger.Log($"[Spooling] Allocating next batch up to storage cap...", echoToConsole: true);
+                LogStatus("Constructing next batch to fit in batch size cap...");
                 await AllocateBatchAsync(stream, torrentFiles, desiredGames, alreadyMoved, allocatedCapBytes, torrentClient, cancellationToken);
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
 
             // STATE: COMPLETE — nothing left to download or move
-            Logger.Log($"[Spooling] Stream entirely completed!", echoToConsole: true);
+            LogStatus($"Stream '{stream.Name}' completed!");
             stream.Status = StreamLifecycleStatus.Completed;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -554,7 +653,7 @@ namespace SpoolDatTorrent.Core.Services
 
             if (string.IsNullOrWhiteSpace(source))
             {
-                Logger.Log($"[Error] Cannot rebuild torrent: no original .torrent path or magnet stored for stream '{stream.Name}'.", echoToConsole: true);
+                LogStatus($"Cannot rebuild torrent: no original .torrent path or magnet stored for stream '{stream.Name}'.");
                 return;
             }
 
@@ -575,7 +674,7 @@ namespace SpoolDatTorrent.Core.Services
 
             if (freshFiles == null || freshFiles.Count == 0)
             {
-                Logger.Log($"[Error] Torrent re-added but file list never became available for '{stream.Name}'.", echoToConsole: true);
+                LogStatus($"Torrent re-added but file list never became available for '{stream.Name}'.");
                 return;
             }
 
@@ -585,8 +684,7 @@ namespace SpoolDatTorrent.Core.Services
 
             foreach (var file in freshFiles)
             {
-                string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
-                if (File.Exists(destPath) && new FileInfo(destPath).Length == file.Size)
+                if (IsAlreadyMoved(stream.TorrentIdentifier, file, destinationRoot, prefixToStrip))
                 {
                     alreadyMoved.Add(file);
                 }
@@ -608,11 +706,11 @@ namespace SpoolDatTorrent.Core.Services
 
             if (string.IsNullOrWhiteSpace(source))
             {
-                Logger.Log($"[Error] Cannot recover torrent: no original .torrent path or magnet stored for stream '{stream.Name}'.", echoToConsole: true);
+                LogStatus($"Cannot Load torrent file for Stream: '{stream.Name}'.");
                 return;
             }
 
-            Logger.Log($"[Spooling] Torrent missing from client; re-adding to resume stream '{stream.Name}'...", echoToConsole: true);
+            LogStatus($"Re-adding Torrent to resume stream '{stream.Name}'...");
 
             // Re-add paused. We don't know the original save path, so let qBittorrent use
             // its default (or the profile's configured location).
@@ -632,7 +730,7 @@ namespace SpoolDatTorrent.Core.Services
 
             if (freshFiles == null || freshFiles.Count == 0)
             {
-                Logger.Log($"[Error] Torrent re-added but file list never became available for '{stream.Name}'.", echoToConsole: true);
+                LogStatus($"Torrent re-added but file list never became available for '{stream.Name}'.");
                 return;
             }
 
@@ -643,8 +741,7 @@ namespace SpoolDatTorrent.Core.Services
             var alreadyMoved = new List<TorrentFileDto>();
             foreach (var file in freshFiles)
             {
-                string destPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
-                if (File.Exists(destPath) && new FileInfo(destPath).Length == file.Size)
+                if (IsAlreadyMoved(stream.TorrentIdentifier, file, destinationRoot, prefixToStrip))
                 {
                     alreadyMoved.Add(file);
                 }
@@ -680,7 +777,7 @@ namespace SpoolDatTorrent.Core.Services
                 await Task.Delay(1000, cancellationToken);
             }
 
-            Logger.Log("[Warning] Scratch files still present after 60s; re-add may trigger a hash check.", echoToConsole: true);
+            LogStatus("Scratch files still present after 60s; re-add may trigger a hash check.");
         }
     }
 }
