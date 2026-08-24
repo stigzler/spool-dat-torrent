@@ -28,6 +28,15 @@ namespace SpoolDatTorrent.Cli
             app.Configure(config =>
             {
                 config.SetApplicationName("spool");
+
+                config.AddCommand<CancelStreamCommand>("cancel")
+                    .WithDescription("Cancel a single stream (remove its torrent and delete the stream row).");
+
+                config.AddCommand<CancelAllStreamsCommand>("cancel-all")
+                    .WithDescription("Cancel all streams (remove every torrent and clear all stream rows).");
+
+                config.AddCommand<ListStreamsCommand>("list")
+                    .WithDescription("List all streams tracked in the database.");
             });
 
             return await app.RunAsync(args);

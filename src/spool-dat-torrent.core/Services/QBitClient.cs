@@ -298,6 +298,36 @@ namespace SpoolDatTorrent.Core.Services
                 && document.RootElement.GetArrayLength() > 0;
         }
 
+        public async Task<IReadOnlyList<string>> GetAllTorrentHashesAsync(CancellationToken cancellationToken = default)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/v2/torrents/info");
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return Array.Empty<string>();
+
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(
+                await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+
+            var hashes = new List<string>();
+            if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var element in document.RootElement.EnumerateArray())
+                {
+                    if (element.TryGetProperty("hash", out var hashElement))
+                    {
+                        var hash = hashElement.GetString();
+                        if (!string.IsNullOrWhiteSpace(hash))
+                        {
+                            hashes.Add(hash);
+                        }
+                    }
+                }
+            }
+
+            return hashes;
+        }
+
         public async Task SetDownloadLimitAsync(string torrentId, long bytesPerSecond, CancellationToken cancellationToken = default)
         {
             var content = new FormUrlEncodedContent(new[]

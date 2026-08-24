@@ -352,6 +352,11 @@ namespace SpoolDatTorrent.Core.Services
             };
             ReportStreamSnapshot(snapshot);
 
+            // Persist progress to the DB so it survives app restarts and is queryable by
+            // the list command / web UI even when the engine is not running.
+            stream.MovedCount = alreadyMoved.Count;
+            stream.TotalCount = desiredFiles.Count;
+
             // STATE: WAIT — files are actively downloading. Do nothing until the whole
             // batch completes, so we never delete the torrent mid-download.
             LogStatus($"Awaiting completion for {downloading.Count} file/s.");
@@ -359,6 +364,7 @@ namespace SpoolDatTorrent.Core.Services
             {
                 var inProgress = downloading.Select(f => $"{Path.GetFileName(f.Name)} ({f.Progress:P})");
                 Logger.Log($"[Spooling] Batch active. Waiting for {downloading.Count} files: {string.Join(", ", inProgress)}", echoToConsole: false);
+                await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
 

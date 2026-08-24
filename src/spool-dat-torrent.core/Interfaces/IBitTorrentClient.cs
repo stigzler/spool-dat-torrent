@@ -27,5 +27,6 @@ namespace SpoolDatTorrent.Core.Interfaces
         Task<string> GetTorrentSavePathAsync(string torrentId, CancellationToken cancellationToken = default);
         Task<string> GetTorrentNameAsync(string torrentId, CancellationToken cancellationToken = default);
         Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<string>> GetAllTorrentHashesAsync(CancellationToken cancellationToken = default);
     }
 }

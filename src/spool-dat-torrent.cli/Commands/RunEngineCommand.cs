@@ -109,7 +109,7 @@ namespace SpoolDatTorrent.Cli.Commands
                     var newStream = new TorrentStreamItem
                     {
                         TorrentIdentifier = calculatedHash,
-                        Name = settings.Name ?? "CLI Automated Injection",
+                        Name = settings.Name ?? GetDefaultStreamName(settings.Torrent!),
                         DatFilePath = settings.DatPath!,
                         SpoolingTargetOverride = settings.TargetOverride,
                         ServerProfileId = "LocalQBit",
@@ -281,6 +281,24 @@ namespace SpoolDatTorrent.Cli.Commands
 
             await engineTask;
             return 0;
+        }
+
+        private static string GetDefaultStreamName(string torrent)
+        {
+            // Use the torrent filename (without the .torrent extension) as the default
+            // stream name, so streams are human-identifiable even without --name.
+            if (torrent.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Magnet Stream";
+            }
+
+            var fileName = Path.GetFileName(torrent);
+            if (fileName.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = fileName[..^".torrent".Length];
+            }
+
+            return string.IsNullOrWhiteSpace(fileName) ? "Stream" : fileName;
         }
     }
 }
