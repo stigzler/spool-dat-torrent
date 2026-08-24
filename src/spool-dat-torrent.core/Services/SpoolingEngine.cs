@@ -40,6 +40,14 @@ namespace SpoolDatTorrent.Core.Services
         // moved, or when we successfully copy it.
         private readonly ConcurrentDictionary<string, HashSet<int>> _movedFileCache = new(StringComparer.OrdinalIgnoreCase);
 
+        // Consecutive connection failures per server profile. Reset when a server succeeds
+        // or when a new engine instance is created (i.e. spool is restarted).
+        private readonly ConcurrentDictionary<string, int> _serverFailures = new(StringComparer.OrdinalIgnoreCase);
+
+        // Whether errored streams have already been re-activated for this engine instance.
+        // A fresh engine = a restart, so errored streams are retried once at startup.
+        private bool _hasReactivatedOnStart;
+
         public SpoolingEngine(
             IServiceScopeFactory scopeFactory,
             IBitTorrentClientFactory clientFactory,
@@ -64,6 +72,19 @@ namespace SpoolDatTorrent.Core.Services
             //    Reporting the full list lets a dashboard show every job, including ones
             //    that are paused/completed or not yet touched this run.
             var allStreams = await dbContext.Streams.ToListAsync(cancellationToken);
+
+            // On the first evaluation of this engine instance (i.e. a fresh spool run),
+            // re-activate any errored streams so a fixed server is retried after a restart.
+            if (!_hasReactivatedOnStart)
+            {
+                _hasReactivatedOnStart = true;
+                foreach (var s in allStreams.Where(s => s.Status == StreamLifecycleStatus.Error))
+                {
+                    s.Status = StreamLifecycleStatus.Active;
+                }
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
             var activeStreams = allStreams
                 .Where(s => s.Status == StreamLifecycleStatus.Active)
                 .ToList();
@@ -102,30 +123,30 @@ namespace SpoolDatTorrent.Core.Services
                 {
                     await torrentClient.AuthenticateAsync(cancellationToken);
 
-                    // Process each stream on this server
+                    // Process each stream on this server.
                     foreach (var stream in streamsOnThisServer)
                     {
                         await ProcessStreamAsync(stream, capPerStream, profileSettings, torrentClient, dbContext, cancellationToken);
                     }
+
+                    // The entire server group (auth + all streams) succeeded: reset the
+                    // failure counter. Note: this must be AFTER processing the streams, not
+                    // after auth, otherwise a server with a bad API key (which only fails on
+                    // a later call) would reset to 0 every cycle and never reach the limit.
+                    _serverFailures[profileName] = 0;
                 }
                 catch (HttpRequestException ex)
                 {
-                    // Client unreachable (e.g. qBittorrent is down). Log and retry next cycle
-                    // rather than crashing the host (CLI, Docker service, or desktop app).
-                    LogStatus($"BitTorrent client '{profileName}' unreachable: {ex.Message}. Will retry next cycle.");
+                    await HandleServerFailureAsync(dbContext, streamsOnThisServer, profileName, $"unreachable: {ex.Message}", cancellationToken);
                 }
                 catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
-                    // Client timed out. Same treatment: log and retry next cycle.
-                    LogStatus($"BitTorrent client '{profileName}' timed out. Will retry next cycle.");
+                    await HandleServerFailureAsync(dbContext, streamsOnThisServer, profileName, "timed out", cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    // Catch-all: any unexpected error (e.g. JSON parsing a non-client response,
-                    // auth failures, etc.) must not kill the background engine task. Log and
-                    // retry this server next cycle so the UI keeps rendering.
                     Logger.Log($"[Error] Client '{profileName}' failed: {ex}");
-                    LogStatus($"Client '{profileName}' error: {ex.Message}");
+                    await HandleServerFailureAsync(dbContext, streamsOnThisServer, profileName, $"error: {ex.Message}", cancellationToken);
                 }
             }
 
@@ -164,10 +185,55 @@ namespace SpoolDatTorrent.Core.Services
             var list = allStreams
                 .Select(s => _progressSnapshots.TryGetValue(s.TorrentIdentifier, out var snap)
                     ? snap
-                    : new StreamProgressInfo { Name = s.Name, TorrentIdentifier = s.TorrentIdentifier, Status = s.Status.ToString() })
+                    : new StreamProgressInfo { Name = s.Name, TorrentIdentifier = s.TorrentIdentifier, StreamId = s.Id, Status = s.Status.ToString() })
                 .ToList();
 
             _progressReporter.ReportStreams(list);
+        }
+
+        private async Task HandleServerFailureAsync(
+            SpoolDbContext dbContext,
+            List<TorrentStreamItem> streams,
+            string profileName,
+            string reason,
+            CancellationToken cancellationToken)
+        {
+            int failures = _serverFailures.AddOrUpdate(profileName, 1, (_, count) => count + 1);
+            int retryCount = _settings.ServerRetryCount < 0 ? 0 : _settings.ServerRetryCount;
+
+            if (failures <= retryCount)
+            {
+                // Retry later — leave the streams Active so they keep being polled.
+                LogStatus($"BitTorrent client '{profileName}' {reason}. Retry {failures}/{retryCount}.");
+                return;
+            }
+
+            // Retries exhausted: mark the streams as Error so polling stops.
+            LogStatus($"BitTorrent client '{profileName}' {reason}. Retries exhausted ({failures}); marking streams as errored.");
+            await MarkServerStreamsErroredAsync(dbContext, streams, profileName, cancellationToken);
+        }
+
+        private async Task MarkServerStreamsErroredAsync(
+            SpoolDbContext dbContext,
+            List<TorrentStreamItem> streams,
+            string profileName,
+            CancellationToken cancellationToken)
+        {
+            bool changed = false;
+            foreach (var stream in streams)
+            {
+                if (stream.Status != StreamLifecycleStatus.Error)
+                {
+                    stream.Status = StreamLifecycleStatus.Error;
+                    changed = true;
+                    Logger.Log($"[Error] Marked stream '{stream.Name}' as Error because server '{profileName}' is unreachable.");
+                }
+            }
+
+            if (changed)
+            {
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
         }
 
         private HashSet<int> GetMovedFileCache(string torrentIdentifier)

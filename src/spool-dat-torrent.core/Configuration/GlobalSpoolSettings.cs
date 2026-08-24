@@ -13,6 +13,13 @@ namespace SpoolDatTorrent.Core.Configuration
         public int SettlingTimeSeconds { get; set; } = 30;
 
         /// <summary>
+        /// Number of consecutive connection failures to a BitTorrent server before its
+        /// streams are marked as Error (and polling for them stops). A fresh engine run
+        /// resets the counters and re-activates errored streams.
+        /// </summary>
+        public int ServerRetryCount { get; set; } = 3;
+
+        /// <summary>
         /// Percentage of the spooling cap reserved as headroom for BitTorrent "boundary
         /// piece" overhead. When a selected file shares a piece with a skipped file,
         /// qbitorrent must still download that whole piece and writes the skipped portion

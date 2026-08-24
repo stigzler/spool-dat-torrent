@@ -64,7 +64,15 @@ namespace SpoolDatTorrent.Cli.Commands
                         reporter.ReportStatus($"Engine error: {ex.Message}");
                     }
 
-                    await Task.Delay(TimeSpan.FromSeconds(pollInterval), cancellationToken);
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(pollInterval), cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Ctrl+C pressed — exit the loop cleanly.
+                        break;
+                    }
                 }
             }, cancellationToken);
 
@@ -136,7 +144,7 @@ namespace SpoolDatTorrent.Cli.Commands
                         {
                             if (!tasks.TryGetValue(file.Name, out var task))
                             {
-                                task = tasks[file.Name] = ctx.AddTask($"[Grey30]({file.StreamId})[/] [Grey62]{Truncate(file.Name)}[/] [Grey30]({FormatSize(file.SizeBytes)})[/]", maxValue: 100);
+                                task = tasks[file.Name] = ctx.AddTask($"[Grey30]({file.StreamId})[/] [Grey62]{Truncate(file.Name,60)}[/] [Grey30]({FormatSize(file.SizeBytes)})[/]", maxValue: 100);
                             }
                             task.Value = Math.Clamp(file.Progress * 100, 0, 100);
                         }
@@ -149,7 +157,15 @@ namespace SpoolDatTorrent.Cli.Commands
                             tasks.Remove(name);
                         }
 
-                        await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                        try
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // Ctrl+C pressed — exit the loop cleanly.
+                            break;
+                        }
                     }
                 });
 
@@ -164,7 +180,7 @@ namespace SpoolDatTorrent.Cli.Commands
 
         private static string Truncate(string text, int maxLength = 40)
         {
-            return text.Length <= maxLength ? text : text[..(maxLength - 1)] + "…";
+            return text.Length <= maxLength ? text : text[..(maxLength - 3)] + "...";
         }
 
         private static string FormatSize(long bytes)

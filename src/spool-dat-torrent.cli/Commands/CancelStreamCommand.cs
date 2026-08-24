@@ -32,25 +32,29 @@ namespace SpoolDatTorrent.Cli.Commands
 
             var serviceProvider = services.BuildServiceProvider();
 
-            string hash = TorrentMetadataHelper.ResolveInfoHash(settings.Torrent!);
-
             var command = new Core.Commands.CancelStreamCommand(
                 serviceProvider.GetRequiredService<IBitTorrentClientFactory>(),
                 serviceProvider.GetRequiredService<IServiceScopeFactory>(),
                 serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GlobalSpoolSettings>>());
 
-            var removed = await command.ExecuteAsync(hash, cancellationToken);
+            string identifier = settings.Identifier!;
+
+            // A plain integer is treated as a stream Id; anything else as a torrent
+            // path/magnet/info-hash.
+            bool removed = int.TryParse(identifier, out int streamId)
+                ? await command.ExecuteByIdAsync(streamId, cancellationToken)
+                : await command.ExecuteAsync(TorrentMetadataHelper.ResolveInfoHash(identifier), cancellationToken);
 
             if (removed)
             {
-                AnsiConsole.MarkupLine($"[green]Cancelled stream:[/] {Markup.Escape(hash)}");
+                AnsiConsole.MarkupLine($"[green]Cancelled stream:[/] {Markup.Escape(identifier)}");
             }
             else
             {
-                AnsiConsole.MarkupLine($"[yellow]No stream found for:[/] {Markup.Escape(hash)}");
+                AnsiConsole.MarkupLine($"[yellow]No stream found for:[/] {Markup.Escape(identifier)}");
             }
 
-            return 0;
+            return removed ? 0 : 1;
         }
     }
 }

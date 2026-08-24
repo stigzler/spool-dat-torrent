@@ -91,7 +91,9 @@ namespace SpoolDatTorrent.Cli.Commands
             var name = settings.Name ?? GetDefaultStreamName(settings.Torrent!);
             var isMagnet = settings.Torrent!.StartsWith("magnet:", StringComparison.OrdinalIgnoreCase);
 
-            var addCommand = new Core.Commands.AddStreamCommand(serviceProvider.GetRequiredService<IServiceScopeFactory>());
+            var addCommand = new Core.Commands.AddStreamCommand(
+                serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+                serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GlobalSpoolSettings>>());
             var stream = await addCommand.ExecuteAsync(
                 torrentIdentifier: calculatedHash,
                 datFilePath: settings.DatPath!,

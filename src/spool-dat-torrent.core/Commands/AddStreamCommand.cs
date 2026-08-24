@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
 using SpoolDatTorrent.Core.Models;
@@ -14,16 +15,21 @@ namespace SpoolDatTorrent.Core.Commands
     public class AddStreamCommand
     {
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly GlobalSpoolSettings _settings;
 
-        public AddStreamCommand(IServiceScopeFactory scopeFactory)
+        public AddStreamCommand(
+            IServiceScopeFactory scopeFactory,
+            IOptions<GlobalSpoolSettings> settings)
         {
             _scopeFactory = scopeFactory;
+            _settings = settings.Value;
         }
 
         /// <summary>
         /// Add or update a stream. Returns the created/updated stream.
         /// When updating an existing stream, a null/empty <paramref name="serverProfileId"/>
-        /// preserves the stream's existing server profile.
+        /// preserves the stream's existing server profile. When creating a new stream, a
+        /// null/empty <paramref name="serverProfileId"/> resolves to the configured default.
         /// </summary>
         public async Task<TorrentStreamItem> ExecuteAsync(
             string torrentIdentifier,
@@ -63,6 +69,12 @@ namespace SpoolDatTorrent.Core.Commands
                 return existing;
             }
 
+            // For a new stream, resolve the server profile: explicit value, else the
+            // configured default (rather than persisting an empty string).
+            string resolvedServer = !string.IsNullOrWhiteSpace(serverProfileId)
+                ? serverProfileId
+                : _settings.DefaultServerProfile;
+
             var stream = new TorrentStreamItem
             {
                 Id = await GetLowestFreeStreamIdAsync(db, cancellationToken),
@@ -70,7 +82,7 @@ namespace SpoolDatTorrent.Core.Commands
                 Name = string.IsNullOrWhiteSpace(name) ? torrentIdentifier : name,
                 DatFilePath = datFilePath,
                 SpoolingTargetOverride = spoolingTargetOverride,
-                ServerProfileId = serverProfileId ?? string.Empty,
+                ServerProfileId = resolvedServer,
                 Status = StreamLifecycleStatus.Active,
                 OriginalTorrentPath = originalTorrentPath,
                 OriginalMagnet = originalMagnet,

@@ -5,6 +5,7 @@ using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
 using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Interfaces;
+using SpoolDatTorrent.Core.Models;
 
 namespace SpoolDatTorrent.Core.Commands
 {
@@ -45,6 +46,29 @@ namespace SpoolDatTorrent.Core.Commands
                 return false;
             }
 
+            return await ExecuteInternalAsync(db, stream, cancellationToken);
+        }
+
+        /// <summary>
+        /// Cancel the stream identified by its numeric database Id.
+        /// </summary>
+        /// <returns>True if a stream row was found and deleted; false otherwise.</returns>
+        public async Task<bool> ExecuteByIdAsync(int streamId, CancellationToken cancellationToken = default)
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
+            var stream = await db.Streams.FirstOrDefaultAsync(s => s.Id == streamId, cancellationToken);
+
+            if (stream == null)
+            {
+                return false;
+            }
+
+            return await ExecuteInternalAsync(db, stream, cancellationToken);
+        }
+
+        private async Task<bool> ExecuteInternalAsync(SpoolDbContext db, TorrentStreamItem stream, CancellationToken cancellationToken)
+        {
             string profileName = string.IsNullOrWhiteSpace(stream.ServerProfileId)
                 ? _settings.DefaultServerProfile
                 : stream.ServerProfileId;
@@ -56,7 +80,7 @@ namespace SpoolDatTorrent.Core.Commands
             {
                 var client = _clientFactory.GetClient(profileName);
                 await client.AuthenticateAsync(cancellationToken);
-                await client.DeleteTorrentAsync(torrentIdentifier, deleteFiles: true, cancellationToken);
+                await client.DeleteTorrentAsync(stream.TorrentIdentifier, deleteFiles: true, cancellationToken);
             }
             catch (Exception ex)
             {
