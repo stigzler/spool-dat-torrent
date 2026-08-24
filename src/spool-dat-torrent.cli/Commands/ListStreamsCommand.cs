@@ -36,40 +36,7 @@ namespace SpoolDatTorrent.Cli.Commands
 
             var streams = await command.ExecuteAsync(settings.Status, cancellationToken);
 
-            if (streams.Count == 0)
-            {
-                AnsiConsole.MarkupLine("[grey]No streams found.[/]");
-                return 0;
-            }
-
-            var table = new Table();
-            table.AddColumn("Id");
-            table.AddColumn("Name");
-            table.AddColumn("Status");
-            table.AddColumn("Progress");
-            table.AddColumn("Server");
-            table.AddColumn("Created (UTC)");
-
-            foreach (var s in streams)
-            {
-                var statusColor = s.Status switch
-                {
-                    "Active" => "green",
-                    "Completed" => "blue",
-                    "Error" => "red",
-                    _ => "grey"
-                };
-
-                table.AddRow(
-                    s.Id.ToString(),
-                    Markup.Escape(s.Name),
-                    $"[{statusColor}]{s.Status}[/]",
-                    $"{s.MovedCount}/{s.TotalCount} ({s.Progress:P0})",
-                    Markup.Escape(s.ServerProfileId),
-                    s.CreatedUtc.ToString("yyyy-MM-dd HH:mm:ss"));
-            }
-
-            AnsiConsole.Write(table);
+            StreamTableRenderer.Render(streams);
             return 0;
         }
     }

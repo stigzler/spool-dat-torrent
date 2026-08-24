@@ -23,20 +23,31 @@ namespace SpoolDatTorrent.Cli
             SettingsManager.EnsureDefaultSettingsExist();
 
             // 2. Hand over execution to Spectre.Console
-            var app = new CommandApp<RunEngineCommand>();
+            var app = new CommandApp();
 
             app.Configure(config =>
             {
-                config.SetApplicationName("spool");
+                config.SetApplicationName("SpoolDatTorrent");
+
+                config.AddCommand<RunEngineCommand>("spool")
+                    .WithDescription("Start the spooling monitor for all active streams.");
+
+                config.AddCommand<AddStreamCommand>("add")
+                    .WithDescription("Add a stream and start spooling. REQUIRED: -t|--torrent <path|magnet|hash> and -d|--dat <path>.");
 
                 config.AddCommand<CancelStreamCommand>("cancel")
-                    .WithDescription("Cancel a single stream (remove its torrent and delete the stream row).");
+                    .WithDescription("Cancel a single stream. REQUIRED: -t|--torrent <path|magnet|hash>.");
 
                 config.AddCommand<CancelAllStreamsCommand>("cancel-all")
                     .WithDescription("Cancel all streams (remove every torrent and clear all stream rows).");
 
                 config.AddCommand<ListStreamsCommand>("list")
-                    .WithDescription("List all streams tracked in the database.");
+                    .WithDescription("List all streams. OPTIONAL: -s|--status <Active|Paused|Completed|Error>.");
+
+                // Show how to get command-specific help in the top-level help output.
+                config.AddExample(new[] { "add", "-h" ,": Show extended help for add"});
+                config.AddExample(new[] { "cancel", "-h", ": Show extended help for cancel" });
+                config.AddExample(new[] { "list", "-h", ": Show extended help for list" });
             });
 
             return await app.RunAsync(args);

@@ -13,7 +13,6 @@ namespace SpoolDatTorrent.Core.DTOs
 
         [System.Text.Json.Serialization.JsonPropertyName("priority")]
         public int Priority { get; set; } // 0 = Do not download, 1 = Normal, 6 = High, 7 = Maximal
-
         public bool IsSeed { get; set; }
     }
 }
