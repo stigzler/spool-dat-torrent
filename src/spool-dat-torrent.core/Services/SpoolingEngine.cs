@@ -482,6 +482,12 @@ namespace SpoolDatTorrent.Core.Services
                 ClientSizeBytes = torrentInfo?.Size ?? 0,
                 ClientDownloadedBytes = torrentInfo?.Downloaded ?? 0,
                 ClientState = torrentInfo?.State ?? string.Empty,
+                ClientSeeds = torrentInfo?.NumSeeds ?? 0,
+                ClientSeedsTotal = torrentInfo?.NumComplete ?? 0,
+                ClientPeers = torrentInfo?.NumPeers ?? 0,
+                ClientPeersTotal = torrentInfo?.NumIncomplete ?? 0,
+                ClientDownSpeed = torrentInfo?.Dlspeed ?? 0,
+                ClientEta = torrentInfo?.Eta ?? -1,
                 MovedCount = alreadyMoved.Count,
                 TotalCount = desiredFiles.Count,
                 Files = downloading
@@ -566,7 +572,7 @@ namespace SpoolDatTorrent.Core.Services
             // (torrent added paused) or a freshly re-added torrent. Set priorities and resume.
             if (pending.Any())
             {
-                LogStatus($"Constructing next batch to fit into maximum spool size ({allocatedCapBytes.ToGigabytes()} GB)...");
+                LogStatus($"Constructing next batch to fit into maximum spool size ({allocatedCapBytes.ToGigabytes():0.#} GB)...");
                 await AllocateBatchAsync(stream, torrentFiles, desiredGames, alreadyMoved, allocatedCapBytes, torrentClient, cancellationToken);
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;

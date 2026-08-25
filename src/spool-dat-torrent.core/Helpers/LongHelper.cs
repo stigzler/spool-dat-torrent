@@ -8,7 +8,7 @@ namespace SpoolDatTorrent.Core.Helpers
     {
         public static double ToGigabytes(this long bytes)
         {
-            return Math.Round(bytes / 1024.0 / 1024.0 / 1024.0, 1);
+            return bytes / 1024.0 / 1024.0 / 1024.0;
         }
     }
 }

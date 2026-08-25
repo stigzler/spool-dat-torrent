@@ -4,39 +4,53 @@
 @inject GlobalSpoolSettings Settings
 
 <MudCard Elevation="2" Class="mb-4">
-    <MudCardHeader>
-        <MudCardHeaderContent>
-            <MudStack Row="true" AlignItems="AlignItems.Center">
-                <MudText Typo="Typo.h6">@Stream.Name</MudText>
+    <div class="pa-4 pb-0">
+        <div style="display: flex; align-items: center; width: 100%; justify-content: space-between; gap: 8px;">
+            <div style="display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 8px;">
+                <MudText Typo="Typo.h6" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@Stream.Name</MudText>
                 @switch (Status)
                 {
                     case "Active":
-                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Class="ml-2">Active</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled" Style="min-width: 96px; justify-content: center;">Active</MudChip>
                         break;
                     case "Paused":
-                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Class="ml-2">Paused</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" Style="min-width: 96px; justify-content: center;">Paused</MudChip>
                         break;
                     case "Completed":
-                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined" Class="ml-2">Completed</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Style="min-width: 96px; justify-content: center;">Completed</MudChip>
                         break;
                     case "Error":
-                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined" Class="ml-2">Error</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled" Style="min-width: 96px; justify-content: center;">Error</MudChip>
                         break;
                 }
-            </MudStack>
-            <MudText Typo="Typo.body2" Style="opacity: 0.8;">@DatName</MudText>
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="text-secondary" />
-                <MudText Typo="Typo.caption" Class="text-secondary" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                    @DestinationText
-                </MudText>
-                @if (!string.IsNullOrWhiteSpace(Stream.SpoolingTargetOverride))
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">@ServerName</MudChip>
+                <MudText Typo="Typo.caption" Class="text-secondary" Style="white-space: nowrap;">@CreatedText</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Primary" Style="white-space: nowrap;">Batch Cap: @CapText</MudText>
+            </div>
+            <div style="display: flex; align-items: center; flex-shrink: 0; gap: 8px;">
+                @if (IsCompleted)
                 {
-                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Class="ml-1">custom</MudChip>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.DeleteForever" OnClick="OnRemove" Style="white-space: nowrap; flex-shrink: 0;">Remove</MudButton>
                 }
-            </MudStack>
-        </MudCardHeaderContent>
-    </MudCardHeader>
+                else
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" StartIcon="@ActionIcon" OnClick="OnStatusChange" Style="white-space: nowrap; flex-shrink: 0;">@ActionLabel</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.Close" OnClick="OnCancel" Style="white-space: nowrap; flex-shrink: 0;">Cancel</MudButton>
+                }
+            </div>
+        </div>
+        <MudText Typo="Typo.body2" Style="opacity: 0.8;">@DatName</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="text-secondary" />
+            <MudText Typo="Typo.caption" Class="text-secondary" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                @DestinationText
+            </MudText>
+            @if (!string.IsNullOrWhiteSpace(Stream.SpoolingTargetOverride))
+            {
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Class="ml-1">custom</MudChip>
+            }
+        </MudStack>
+    </div>
 
     <MudCardContent>
         <MudStack Spacing="1">
@@ -58,62 +72,49 @@
 
             <MudProgressLinear Value="@ProgressPercent" Color="@ProgressColor" />
 
-            @if (HasClientInfo)
-            {
-                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mt-1">
-                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                        <MudText Typo="Typo.body2">@ClientProgressPercent.ToString("0.#")%</MudText>
-                        <MudText Typo="Typo.caption" Class="text-secondary">downloaded</MudText>
-                    </MudStack>
-                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                        <MudText Typo="Typo.caption" Class="text-secondary">@ClientSizeText</MudText>
-                        @if (!string.IsNullOrWhiteSpace(ClientState))
-                        {
-                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">@ClientState</MudChip>
-                        }
-                    </MudStack>
-                </MudStack>
-                <MudProgressLinear Value="@ClientProgressPercent" Color="Color.Secondary" />
-            }
-
             @if (!string.IsNullOrWhiteSpace(StatusMessage))
             {
                 <MudText Typo="Typo.body2" Class="text-secondary" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                     @StatusMessage
                 </MudText>
             }
-
-            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Spacing="2" Class="mt-1">
-                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">@ServerName</MudChip>
-                <MudText Typo="Typo.caption" Class="text-secondary">@CreatedText</MudText>
-                <MudText Typo="Typo.caption" Color="Color.Primary">Batch Cap: @CapText</MudText>
-            </MudStack>
         </MudStack>
     </MudCardContent>
 
-    <MudCardActions>
-        <MudStack Row="true" Spacing="1">
-            <MudButton Variant="Variant.Text" Color="Color.Default"
+    <MudCardActions Class="p-2 flex-column">
+        <div class="d-flex align-items-center w-100" style="flex-wrap: nowrap; gap: 4px;">
+            <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
                        StartIcon="@(_expanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
-                       OnClick="ToggleFiles">
+                       OnClick="ToggleFiles"
+                       Style="white-space: nowrap; flex-shrink: 0;">
                 Files (@FileCount)
             </MudButton>
-            <MudSpacer />
-            @if (IsCompleted)
+            @if (HasClientInfo)
             {
-                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.DeleteForever" OnClick="OnRemove">Remove</MudButton>
+                <div class="ml-3" style="flex-shrink: 0; white-space: nowrap; width: 150px; text-align: right;">@ClientProgressPercent.ToString("0.#")% / @ClientSizeText</div>
+                <div class="flex-grow-1 ml-3" style="min-width: 60px;">
+                    <MudProgressLinear Value="@ClientProgressPercent" Color="Color.Secondary" Class="w-100" />
+                </div>
             }
-            else
-            {
-                <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@ActionIcon" OnClick="OnStatusChange">@ActionLabel</MudButton>
-                <MudButton Variant="Variant.Text" Color="Color.Error" StartIcon="@Icons.Material.Filled.Close" OnClick="OnCancel">Cancel</MudButton>
-            }
-        </MudStack>
+        </div>
     </MudCardActions>
 
     @if (_expanded)
     {
         <MudCardContent Class="pt-0">
+            @if (HasClientInfo)
+            {
+                <div class="d-flex align-items-center w-100 mb-3" style="flex-wrap: nowrap; gap: 12px;">
+                    @if (!string.IsNullOrWhiteSpace(ClientState))
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" Style="flex-shrink: 0; white-space: nowrap; width: 110px; justify-content: center;">@ClientState</MudChip>
+                    }
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: left;">Seeds: @ClientSeedsText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: left;">Peers: @ClientPeersText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 120px; text-align: left;">ETA: @ClientEtaText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; text-align: left;">Speed: @ClientSpeedText</div>
+                </div>
+            }
             <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
                 <MudText Typo="Typo.body2">Batch files</MudText>
                 <MudSpacer />
@@ -208,11 +209,64 @@
             {
                 return string.Empty;
             }
-            return Live.ClientSizeBytes.ToGigabytes().ToString("0.#") + " GB";
+            return Live.ClientSizeBytes.ToGigabytes().ToString("0.##") + " GB";
         }
     }
 
     private string ClientState => Live?.ClientState ?? string.Empty;
+
+    private int ClientSeeds => Live?.ClientSeeds ?? 0;
+    private int ClientPeers => Live?.ClientPeers ?? 0;
+
+    private string ClientSeedsText
+    {
+        get
+        {
+            int connected = ClientSeeds;
+            int total = Live?.ClientSeedsTotal ?? 0;
+            return total > 0 ? $"{connected} ({total})" : connected.ToString();
+        }
+    }
+
+    private string ClientPeersText
+    {
+        get
+        {
+            int connected = ClientPeers;
+            int total = Live?.ClientPeersTotal ?? 0;
+            return total > 0 ? $"{connected} ({total})" : connected.ToString();
+        }
+    }
+
+    private string ClientEtaText
+    {
+        get
+        {
+            long eta = Live?.ClientEta ?? -1;
+            if (eta < 0) return "—";
+            long days = eta / 86400;
+            long hours = (eta % 86400) / 3600;
+            long minutes = (eta % 3600) / 60;
+            long seconds = eta % 60;
+            if (days > 0) return $"{days}d {hours:00}h {minutes:00}m {seconds:00}s";
+            if (hours > 0) return $"{hours:00}h {minutes:00}m {seconds:00}s";
+            if (minutes > 0) return $"{minutes:00}m {seconds:00}s";
+            return $"{seconds:00}s";
+        }
+    }
+
+    private string ClientSpeedText
+    {
+        get
+        {
+            long speed = Live?.ClientDownSpeed ?? 0;
+            if (speed <= 0) return "—";
+            if (speed < 1024) return $"{speed} B/s";
+            if (speed < 1024 * 1024) return $"{speed / 1024.0:0.#} KB/s";
+            if (speed < 1024L * 1024 * 1024) return $"{speed / (1024.0 * 1024):0.##} MB/s";
+            return $"{speed / (1024.0 * 1024 * 1024):0.##} GB/s";
+        }
+    }
 
     private string ServerName => string.IsNullOrWhiteSpace(Live?.ServerName) ? Stream.ServerProfileId : Live!.ServerName;
 

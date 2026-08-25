@@ -57,5 +57,23 @@ namespace SpoolDatTorrent.Core.DTOs
         /// <summary>The torrent's state as reported by the client (e.g. "downloading",
         /// "pausedUP", "checking", "stalledUP").</summary>
         public string ClientState { get; set; } = string.Empty;
+
+        /// <summary>Number of connected seeds as reported by the client.</summary>
+        public int ClientSeeds { get; set; }
+
+        /// <summary>Total number of seeds in the swarm as reported by the client.</summary>
+        public int ClientSeedsTotal { get; set; }
+
+        /// <summary>Number of connected peers as reported by the client.</summary>
+        public int ClientPeers { get; set; }
+
+        /// <summary>Total number of leechers in the swarm as reported by the client.</summary>
+        public int ClientPeersTotal { get; set; }
+
+        /// <summary>Download speed in bytes/second as reported by the client.</summary>
+        public long ClientDownSpeed { get; set; }
+
+        /// <summary>ETA in seconds as reported by the client (-1 if unknown).</summary>
+        public long ClientEta { get; set; }
     }
 }
