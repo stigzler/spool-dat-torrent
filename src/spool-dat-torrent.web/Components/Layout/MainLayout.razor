@@ -1,16 +1,20 @@
 ﻿@using MudBlazor
 @inherits LayoutComponentBase
 
-<MudThemeProvider />
+<MudThemeProvider Theme="AppTheme.Theme" @bind-IsDarkMode="_isDarkMode" />
 <MudDialogProvider />
 <MudSnackbarProvider />
 <MudPopoverProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Dark">
+    <MudAppBar Elevation="1">
         <MudImage Src="/icon-128px.png" Alt="SpoolDatTorrent Icon" Height="48" Class="ml-3 mr-2" Style="object-fit: contain;" />
         <MudText Typo="Typo.h6" Style="font-family: 'Rubik', sans-serif; font-weight: 500;">SpoolDatTorrent</MudText>
         <MudSpacer />
+        <MudSwitch T="bool" @bind-Value="_isDarkMode"
+                   Color="Color.Primary"
+                   Label="@(_isDarkMode ? "Dark" : "Light")"
+                   OnColor="Color.Success" />
         <MudIconButton Icon="@Icons.Material.Filled.ExitToApp" OnClick="Logout" Title="Log out" />
     </MudAppBar>
 
@@ -34,6 +38,8 @@
 @code {
     [Inject]
     private NavigationManager Navigation { get; set; } = default!;
+
+    private bool _isDarkMode;
 
     private void Logout()
     {

@@ -92,7 +92,7 @@
             @if (HasClientInfo)
             {
                 <div class="ml-3" style="flex-shrink: 0; white-space: nowrap; width: 150px; text-align: right;">@ClientProgressPercent.ToString("0.#")% / @ClientSizeText</div>
-                <div class="flex-grow-1 ml-3" style="min-width: 60px;">
+                <div class="flex-grow-1 ml-3 mr-5" style="min-width: 60px;">
                     <MudProgressLinear Value="@ClientProgressPercent" Color="Color.Secondary" Class="w-100" />
                 </div>
             }
@@ -104,7 +104,7 @@
         <MudCardContent Class="pt-0">
             @if (HasClientInfo)
             {
-                <div class="d-flex align-items-center w-100 mb-3" style="flex-wrap: nowrap; gap: 12px;">
+                <div class="d-flex align-items-center w-100 mb-3" style="flex-wrap: nowrap; gap: 12px; opacity: 0.7;">
                     @if (!string.IsNullOrWhiteSpace(ClientState))
                     {
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" Style="flex-shrink: 0; white-space: nowrap; width: 110px; justify-content: center;">@ClientState</MudChip>
@@ -134,7 +134,7 @@
                                 <MudText Typo="Typo.body2" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@file.Name</MudText>
                                 <MudText Typo="Typo.body2" Class="ml-2">@file.Progress.ToString("P1")</MudText>
                             </div>
-                            <MudProgressLinear Value="@(file.Progress * 100)" Color="Color.Primary" Class="mt-1" />
+                            <MudProgressLinear Value="@(file.Progress * 100)" Color="Color.Primary" Class="mt-1" Style="height: 6px;" />
                         </div>
                         <MudText Typo="Typo.body2" Class="text-secondary ml-2" Style="white-space: nowrap;">@FileSizeText(file)</MudText>
                     </div>
@@ -213,7 +213,24 @@
         }
     }
 
-    private string ClientState => Live?.ClientState ?? string.Empty;
+    private string ClientState
+    {
+        get
+        {
+            var state = Live?.ClientState ?? string.Empty;
+            // qBittorrent appends "DL"/"UP" to some states (e.g. "stalledDL", "pausedUP").
+            // Strip the trailing suffix for a cleaner display.
+            if (state.EndsWith("DL", StringComparison.OrdinalIgnoreCase))
+            {
+                return state[..^2];
+            }
+            if (state.EndsWith("UP", StringComparison.OrdinalIgnoreCase))
+            {
+                return state[..^2];
+            }
+            return state;
+        }
+    }
 
     private int ClientSeeds => Live?.ClientSeeds ?? 0;
     private int ClientPeers => Live?.ClientPeers ?? 0;
