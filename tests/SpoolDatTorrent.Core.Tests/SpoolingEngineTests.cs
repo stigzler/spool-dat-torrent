@@ -47,6 +47,7 @@ namespace SpoolDatTorrent.Core.Tests
             public Task<long> GetPieceSizeAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult(16L * 1024 * 1024);
             public Task RecheckTorrentAsync(string torrentId, CancellationToken cancellationToken = default) => Task.CompletedTask;
             public Task<string> GetTorrentSavePathAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult(SavePath);
+            public Task<string> GetTorrentContentPathAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult(SavePath);
             public Task<string> GetTorrentNameAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult("Test Torrent");
             public Task<TorrentInfoDto?> GetTorrentInfoAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult<TorrentInfoDto?>(null);
             public Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default) => Task.FromResult(true);

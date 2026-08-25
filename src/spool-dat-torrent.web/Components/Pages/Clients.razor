@@ -6,6 +6,7 @@
 @inject IDialogService DialogService
 @inject DeleteServerProfileCommand DeleteServerCommand
 @inject AddServerProfileCommand AddServerCommand
+@inject ListStreamsCommand ListStreamsCommand
 
 <PageTitle>Servers</PageTitle>
 
@@ -28,6 +29,7 @@ else
                                    Name="@kvp.Key"
                                    Profile="kvp.Value"
                                    IsDefault="@(string.Equals(_settings.DefaultServerProfile, kvp.Key, StringComparison.OrdinalIgnoreCase))"
+                                   InUseStreamCount="@(_inUseCounts.TryGetValue(kvp.Key, out var c) ? c : 0)"
                                    OnSave="Save"
                                    OnRename="RenameProfile"
                                    OnDelete="() => DeleteProfile(kvp.Key)" />
@@ -40,10 +42,27 @@ else
     [Inject] private GlobalSpoolSettings _settings { get; set; } = default!;
 
     private Dictionary<string, TorrentServerProfile> _profiles = new();
+    private Dictionary<string, int> _inUseCounts = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         _profiles = _settings.TorrentServers;
+        await LoadInUseCountsAsync();
+    }
+
+    private async Task LoadInUseCountsAsync()
+    {
+        try
+        {
+            var streams = await ListStreamsCommand.ExecuteAsync();
+            _inUseCounts = streams
+                .GroupBy(s => string.IsNullOrWhiteSpace(s.ServerProfileId) ? _settings.DefaultServerProfile : s.ServerProfileId)
+                .ToDictionary(g => g.Key, g => g.Count());
+        }
+        catch
+        {
+            _inUseCounts = new Dictionary<string, int>();
+        }
     }
 
     private void Save()

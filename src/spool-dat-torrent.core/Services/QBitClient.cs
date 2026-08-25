@@ -57,6 +57,37 @@ namespace SpoolDatTorrent.Core.Services
             return string.Empty;
         }
 
+        public async Task<string> GetTorrentContentPathAsync(string torrentId, CancellationToken cancellationToken = default)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            var root = document.RootElement;
+
+            if (root.ValueKind == System.Text.Json.JsonValueKind.Array && root.GetArrayLength() > 0)
+            {
+                // content_path is where the files ACTUALLY live right now. With qBittorrent's
+                // "keep incomplete torrents in" enabled, this is the incomplete folder while
+                // save_path still points at the final (completed) location. Fall back to
+                // save_path when content_path is absent (older qBittorrent or no incomplete dir).
+                if (root[0].TryGetProperty("content_path", out var contentPathElement) &&
+                    !string.IsNullOrWhiteSpace(contentPathElement.GetString()))
+                {
+                    return contentPathElement.GetString() ?? string.Empty;
+                }
+
+                if (root[0].TryGetProperty("save_path", out var savePathElement))
+                {
+                    return savePathElement.GetString() ?? string.Empty;
+                }
+            }
+            return string.Empty;
+        }
+
         public async Task<string> GetTorrentNameAsync(string torrentId, CancellationToken cancellationToken = default)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");

@@ -25,6 +25,7 @@ namespace SpoolDatTorrent.Core.Interfaces
         Task SetFilePrioritiesAsync(string torrentId, IEnumerable<int> fileIndices, int priority, CancellationToken cancellationToken = default);
 
         Task<string> GetTorrentSavePathAsync(string torrentId, CancellationToken cancellationToken = default);
+        Task<string> GetTorrentContentPathAsync(string torrentId, CancellationToken cancellationToken = default);
         Task<string> GetTorrentNameAsync(string torrentId, CancellationToken cancellationToken = default);
         Task<TorrentInfoDto?> GetTorrentInfoAsync(string torrentId, CancellationToken cancellationToken = default);
         Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default);

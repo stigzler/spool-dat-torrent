@@ -20,14 +20,18 @@
     </MudCardContent>
 
     <MudCardActions>
-        <MudStack Row="true" Spacing="1">
-            <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Edit" StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
+        <div class="d-flex align-items-center w-100" style="gap: 8px;">
+            <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Edit" Disabled="IsInUse" StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
             <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="TestConnection" Disabled="_isTesting" StartIcon="@Icons.Material.Filled.Link">
                 @(_isTesting ? "Testing..." : "Test")
             </MudButton>
-            <MudSpacer />
-            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="Delete" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
-        </MudStack>
+            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="Delete" Disabled="IsInUse" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
+            <div class="flex-grow-1"></div>
+            @if (IsInUse)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Warning" Style="white-space: nowrap;">In use by @InUseStreamCount stream(s)</MudText>
+            }
+        </div>
     </MudCardActions>
 </MudCard>
 
@@ -39,9 +43,12 @@
     [Parameter] public TorrentServerProfile Profile { get; set; } = default!;
     [Parameter] public string Name { get; set; } = string.Empty;
     [Parameter] public bool IsDefault { get; set; }
+    [Parameter] public int InUseStreamCount { get; set; }
     [Parameter] public EventCallback OnSave { get; set; }
     [Parameter] public EventCallback<(string OldName, string NewName)> OnRename { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
+
+    private bool IsInUse => InUseStreamCount > 0;
 
     private bool _isTesting;
 

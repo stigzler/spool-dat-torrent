@@ -464,6 +464,10 @@ First working slice of the Blazor web UI: layout + Settings page + single-admin 
 - **Register `SpoolingEngine` as a hosted `BackgroundService`** — DONE: `SpoolEngineHostedService` runs the engine loop at `PollIntervalSeconds`, writing snapshots to `InMemoryProgressStore`.
 - **`BlazorProgressReporter`** — replaced by `InMemoryProgressStore` (singleton implementing `ISpoolingProgressReporter`) in Core.
 
+## Stretch goals (deferred, not yet implemented)
+
+- **DAT hash verification on move** — the DAT files (No-Intro / Redump / TOSEC, all Logiqx XML) carry `size`, `crc`, `md5`, and `sha1` per `<rom>`. The engine currently selects files by **name match** and verifies only **size** (plus BitTorrent's own piece-level SHA-1). A stretch goal is to extend `IDatParserService` to return a richer model (`name → { size, crc, md5, sha1 }`) and verify the **SHA-1** of each moved file against the DAT *during* the copy (stream source → hash → destination in one pass, so no extra I/O). This confirms the file is the *correct dump*, not just a name-matched file. Make it a user setting (default on). Deferred because it touches the engine copy path.
+
 ## Current branch
 
 `webUI`

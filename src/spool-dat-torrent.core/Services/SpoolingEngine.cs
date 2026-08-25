@@ -54,6 +54,11 @@ namespace SpoolDatTorrent.Core.Services
         // or when a new engine instance is created (i.e. spool is restarted).
         private readonly ConcurrentDictionary<string, int> _serverFailures = new(StringComparer.OrdinalIgnoreCase);
 
+        // Consecutive DRAIN passes where no file copied, keyed by torrent identifier. After
+        // a threshold we force a delete+readd so qBittorrent's stale 100% progress (caused by
+        // a mid-stream settings/cap change) is resynced with the actual on-disk data.
+        private readonly ConcurrentDictionary<string, int> _drainFailures = new(StringComparer.OrdinalIgnoreCase);
+
         // Whether errored streams have already been re-activated for this engine instance.
         // A fresh engine = a restart, so errored streams are retried once at startup.
         private bool _hasReactivatedOnStart;
@@ -359,6 +364,46 @@ namespace SpoolDatTorrent.Core.Services
             }
         }
 
+        /// <summary>
+        /// Resolve the actual on-disk source path for a file, tolerating the race where
+        /// qBittorrent moves a file from the incomplete folder (content_path) to the
+        /// completed folder (save_path) between our poll and our copy. Checks both candidate
+        /// locations and returns the first that exists with the expected size.
+        /// </summary>
+        private string ResolveSourcePath(
+            string torrentContentPath,
+            string torrentSavePath,
+            string fileRelativeName,
+            long expectedSize,
+            TorrentServerProfile profile)
+        {
+            var candidates = new[]
+            {
+                TranslateToLocalPath(torrentContentPath, fileRelativeName, profile),
+                TranslateToLocalPath(torrentSavePath, fileRelativeName, profile)
+            };
+
+            foreach (var candidate in candidates)
+            {
+                try
+                {
+                    var info = new FileInfo(candidate);
+                    if (info.Exists && info.Length == expectedSize)
+                    {
+                        return candidate;
+                    }
+                }
+                catch (IOException)
+                {
+                    // Skip invalid paths.
+                }
+            }
+
+            // None found — return the primary (content) candidate so the caller's error
+            // message and "Actual: N" reflects the most likely location.
+            return candidates[0];
+        }
+
         // Used by Web/Docker: Runs continuously in the background
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -411,6 +456,7 @@ namespace SpoolDatTorrent.Core.Services
             }
 
             string torrentSavePath = await torrentClient.GetTorrentSavePathAsync(stream.TorrentIdentifier, cancellationToken);
+            string torrentContentPath = await torrentClient.GetTorrentContentPathAsync(stream.TorrentIdentifier, cancellationToken);
             string torrentName = await torrentClient.GetTorrentNameAsync(stream.TorrentIdentifier, cancellationToken);
             var torrentFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
 
@@ -533,13 +579,15 @@ namespace SpoolDatTorrent.Core.Services
                 await Task.Delay(1000, cancellationToken);
 
                 var copiedIndices = new List<int>();
+                bool corruptSourceDetected = false;
 
                 foreach (var file in readyToMove)
                 {
                     string destinationPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
-                    string sourcePath = TranslateToLocalPath(torrentSavePath, file.Name, profileSettings);
+                    string sourcePath = ResolveSourcePath(torrentContentPath, torrentSavePath, file.Name, file.Size, profileSettings);
 
                     LogStatus($"Moving file: {Path.GetFileName(file.Name)}...");
+                    Logger.LogDebug($"[DRAIN] source='{sourcePath}' dest='{destinationPath}' expected={file.Size}");
 
                     try
                     {
@@ -549,18 +597,51 @@ namespace SpoolDatTorrent.Core.Services
                     }
                     catch (IOException ex)
                     {
-                        LogStatus($"Move failed for '{Path.GetFileName(file.Name)}' (will retry next loop): {ex.Message}");
+                        // Distinguish a genuinely-missing/0-byte source (qBittorrent's stale
+                        // 100% progress) from a transient copy failure. The former is the
+                        // infinite-loop trigger and needs a delete+readd resync.
+                        if (ex.Message.Contains("not fully formed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            corruptSourceDetected = true;
+                        }
+
+                        LogStatus($"Move failed for '{Path.GetFileName(file.Name)}' (will retry next loop): {ex.Message} [source: {sourcePath}]");
+                        Logger.LogDebug($"[DRAIN] move failed: {ex.Message}");
                     }
                 }
 
                 if (copiedIndices.Any())
                 {
+                    // Progress was made — reset the drain-failure counter.
+                    _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
                     LogStatus($"Moved {copiedIndices.Count} files. Rebuilding torrent for next batch...");
                     await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
                 }
+                else if (corruptSourceDetected)
+                {
+                    // qBittorrent reports files as 100% but the on-disk data is gone (likely
+                    // a delete+readd during a mid-stream settings change). Force a rebuild so
+                    // qBittorrent re-checks and re-downloads, instead of looping forever.
+                    int failures = _drainFailures.AddOrUpdate(stream.TorrentIdentifier, 1, (_, c) => c + 1);
+                    Logger.LogDebug($"[DRAIN] corrupt source detected, consecutive failures={failures}");
+
+                    if (failures >= 2)
+                    {
+                        _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
+                        LogStatus($"Source data missing; forcing a re-check to resync with qBittorrent...");
+                        await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                    }
+                    else
+                    {
+                        // First occurrence — give qBittorrent one more cycle to resync before
+                        // forcing the rebuild.
+                        await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
+                    }
+                }
                 else
                 {
-                    // Nothing copied this pass (all failed) — resume and retry next loop
+                    // Transient copy failure (e.g. destination locked) — resume and retry.
+                    _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
                     await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
                 }
 

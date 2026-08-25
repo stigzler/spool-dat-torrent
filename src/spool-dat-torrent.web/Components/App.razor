@@ -15,6 +15,17 @@
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <script>
+        // Apply the saved dark-mode background BEFORE the page paints to avoid a
+        // light-mode flash. MudBlazor's theme takes over once it initialises.
+        (function () {
+            try {
+                if (localStorage.getItem('sdt_darkmode') === 'True') {
+                    document.documentElement.style.backgroundColor = '#1E1E1E';
+                }
+            } catch (e) { /* ignore */ }
+        })();
+    </script>
 </head>
 
 <body>

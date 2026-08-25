@@ -11,7 +11,7 @@
         <MudImage Src="/icon-128px.png" Alt="SpoolDatTorrent Icon" Height="48" Class="ml-3 mr-2" Style="object-fit: contain;" />
         <MudText Typo="Typo.h6" Style="font-family: 'Rubik', sans-serif; font-weight: 500;">SpoolDatTorrent</MudText>
         <MudSpacer />
-        <MudSwitch T="bool" @bind-Value="_isDarkMode"
+        <MudSwitch T="bool" @bind-Value="_isDarkMode" @bind-Value:after="() => ToggleDarkMode(_isDarkMode)"
                    Color="Color.Primary"
                    Label="@(_isDarkMode ? "Dark" : "Light")"
                    OnColor="Color.Success" />
@@ -39,7 +39,30 @@
     [Inject]
     private NavigationManager Navigation { get; set; } = default!;
 
+    [Inject]
+    private IJSRuntime JS { get; set; } = default!;
+
     private bool _isDarkMode;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Restore the saved dark-mode preference from localStorage.
+            var saved = await JS.InvokeAsync<string>("localStorage.getItem", "sdt_darkmode");
+            if (bool.TryParse(saved, out var dark) && dark)
+            {
+                _isDarkMode = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private async Task ToggleDarkMode(bool value)
+    {
+        _isDarkMode = value;
+        await JS.InvokeVoidAsync("localStorage.setItem", "sdt_darkmode", value.ToString());
+    }
 
     private void Logout()
     {
