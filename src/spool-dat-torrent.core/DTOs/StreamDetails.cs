@@ -10,6 +10,7 @@ namespace SpoolDatTorrent.Core.DTOs
         public string Name { get; set; } = string.Empty;
         public string TorrentIdentifier { get; set; } = string.Empty;
         public string DatFilePath { get; set; } = string.Empty;
+        public string? OriginalDatPath { get; set; }
         public string? SpoolingTargetOverride { get; set; }
         public string ServerProfileId { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;

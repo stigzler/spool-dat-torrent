@@ -1,0 +1,27 @@
+@using SpoolDatTorrent.Core.Configuration
+
+<MudDialog>
+    <DialogContent>
+        <MudText>@ContentText</MudText>
+        <MudStack Class="mt-3">
+            <MudCheckBox T="bool" @bind-Value="_dontAskAgain" Label="Don't show this message again" Color="Color.Primary" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="Confirm">@ConfirmLabel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialogInstance { get; set; } = default!;
+
+    [Parameter] public string ContentText { get; set; } = string.Empty;
+    [Parameter] public string ConfirmLabel { get; set; } = "Confirm";
+
+    private bool _dontAskAgain;
+
+    private void Cancel() => MudDialogInstance.Close(DialogResult.Cancel());
+
+    private void Confirm() => MudDialogInstance.Close(DialogResult.Ok(new StreamDeleteConfirmResult { Confirmed = true, DontAskAgain = _dontAskAgain }));
+}

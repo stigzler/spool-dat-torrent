@@ -33,6 +33,16 @@ namespace SpoolDatTorrent.Core.Services
         // optional progress reporter at the end of each evaluation cycle.
         private readonly ConcurrentDictionary<string, StreamProgressInfo> _progressSnapshots = new(StringComparer.OrdinalIgnoreCase);
 
+        // Latest human-readable status message per stream, keyed by torrent identifier.
+        // Updated by LogStatus when a stream context is set; exposed via snapshots so a
+        // dashboard can show "what is this stream doing right now".
+        private readonly ConcurrentDictionary<string, string> _statusMessages = new(StringComparer.OrdinalIgnoreCase);
+
+        // The stream currently being processed by the single engine loop. LogStatus uses
+        // this to attribute status messages to the right stream without threading the
+        // identifier through every call site.
+        private TorrentStreamItem? _currentStream;
+
         // Cache of file indices already moved to the destination, keyed by torrent identifier.
         // Once a file is confirmed moved (exists at destination with correct size), we stop
         // re-statting it on every poll cycle — this is the dominant per-cycle disk cost for
@@ -126,7 +136,7 @@ namespace SpoolDatTorrent.Core.Services
                     // Process each stream on this server.
                     foreach (var stream in streamsOnThisServer)
                     {
-                        await ProcessStreamAsync(stream, capPerStream, profileSettings, torrentClient, dbContext, cancellationToken);
+                        await ProcessStreamAsync(stream, capPerStream, profileName, profileSettings, torrentClient, dbContext, cancellationToken);
                     }
 
                     // The entire server group (auth + all streams) succeeded: reset the
@@ -160,6 +170,19 @@ namespace SpoolDatTorrent.Core.Services
             // Always write to the log file.
             Logger.Log(message, echoToConsole: false);
 
+            // Attribute the message to the currently-processed stream (if any) so a
+            // dashboard can show what a given stream is doing right now. Also push it into
+            // the live snapshot immediately so the UI shows the current message rather than
+            // the one captured at the start of the cycle.
+            if (_currentStream != null)
+            {
+                _statusMessages[_currentStream.TorrentIdentifier] = message;
+                if (_progressSnapshots.TryGetValue(_currentStream.TorrentIdentifier, out var liveSnapshot))
+                {
+                    liveSnapshot.StatusMessage = message;
+                }
+            }
+
             if (_progressReporter != null)
             {
                 // Route through the reporter so a live display can render it cleanly.
@@ -171,6 +194,11 @@ namespace SpoolDatTorrent.Core.Services
                 // No live display attached (e.g. Docker service): echo to the console.
                 Console.WriteLine(message);
             }
+        }
+
+        private string GetStreamStatusMessage(string torrentIdentifier)
+        {
+            return _statusMessages.TryGetValue(torrentIdentifier, out var msg) ? msg : string.Empty;
         }
 
         private void ReportStreamSnapshot(StreamProgressInfo snapshot)
@@ -363,11 +391,13 @@ namespace SpoolDatTorrent.Core.Services
         private async Task ProcessStreamAsync(
                             TorrentStreamItem stream,
                             long allocatedCapBytes,
+                            string serverProfileName,
                             TorrentServerProfile profileSettings,
                             IBitTorrentClient torrentClient,
                             SpoolDbContext dbContext,
                             CancellationToken cancellationToken)
         {
+            _currentStream = stream;
             var desiredGames = await GetDesiredGamesAsync(GetActiveDatPath(stream), cancellationToken);
 
             // RECOVERY: if the torrent is missing from the client (e.g. the app was closed
@@ -385,6 +415,10 @@ namespace SpoolDatTorrent.Core.Services
             var torrentFiles = await torrentClient.GetFilesAsync(stream.TorrentIdentifier, cancellationToken);
 
             if (torrentFiles == null || !torrentFiles.Any()) return;
+
+            // Fetch the client-reported torrent info (size, downloaded, state) so the UI can
+            // show an accurate download progress bar and what qBittorrent is doing.
+            var torrentInfo = await torrentClient.GetTorrentInfoAsync(stream.TorrentIdentifier, cancellationToken);
 
             // Destination root resolution:
             //   - Explicit per-stream target (SpoolingTargetOverride): files go directly
@@ -440,11 +474,26 @@ namespace SpoolDatTorrent.Core.Services
                 TorrentIdentifier = stream.TorrentIdentifier,
                 StreamId = stream.Id,
                 Status = stream.Status.ToString(),
+                ServerName = serverProfileName,
+                CreatedUtc = stream.CreatedUtc,
+                TotalSizeBytes = desiredFiles.Sum(f => f.Size),
+                AllocatedCapBytes = allocatedCapBytes,
+                StatusMessage = GetStreamStatusMessage(stream.TorrentIdentifier),
+                ClientSizeBytes = torrentInfo?.Size ?? 0,
+                ClientDownloadedBytes = torrentInfo?.Downloaded ?? 0,
+                ClientState = torrentInfo?.State ?? string.Empty,
                 MovedCount = alreadyMoved.Count,
                 TotalCount = desiredFiles.Count,
                 Files = downloading
                     .Concat(readyToMove)
-                    .Select(f => new FileProgressInfo { Name = Path.GetFileName(f.Name), Progress = f.Progress, StreamId = stream.Id, SizeBytes = f.Size })
+                    .Select(f => new FileProgressInfo
+                    {
+                        Name = Path.GetFileName(f.Name),
+                        Progress = f.Progress,
+                        StreamId = stream.Id,
+                        SizeBytes = f.Size,
+                        Status = f.Progress >= 1.0f ? "Downloaded" : "Downloading"
+                    })
                     .ToList()
             };
             ReportStreamSnapshot(snapshot);
@@ -494,7 +543,7 @@ namespace SpoolDatTorrent.Core.Services
                     }
                     catch (IOException ex)
                     {
-                        LogStatus($"Move failed (will retry next loop)");
+                        LogStatus($"Move failed for '{Path.GetFileName(file.Name)}' (will retry next loop): {ex.Message}");
                     }
                 }
 

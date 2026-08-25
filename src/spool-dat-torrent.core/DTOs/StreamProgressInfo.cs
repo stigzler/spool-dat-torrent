@@ -28,5 +28,34 @@ namespace SpoolDatTorrent.Core.DTOs
 
         /// <summary>Files in the current batch and their download progress.</summary>
         public List<FileProgressInfo> Files { get; set; } = new();
+
+        /// <summary>Name of the BitTorrent server profile this stream runs on.</summary>
+        public string ServerName { get; set; } = string.Empty;
+
+        /// <summary>UTC timestamp when the stream was created.</summary>
+        public System.DateTime CreatedUtc { get; set; }
+
+        /// <summary>Total size in bytes of all desired (DAT-matched) files in the torrent.</summary>
+        public long TotalSizeBytes { get; set; }
+
+        /// <summary>
+        /// The dynamic batch-size cap (in bytes) this stream is currently allocated on its
+        /// server, after the fair-share split across active streams and the safety margin.
+        /// </summary>
+        public long AllocatedCapBytes { get; set; }
+
+        /// <summary>The latest human-readable status message emitted for this stream (e.g.
+        /// "Halting torrent to move 8 completed files...").</summary>
+        public string StatusMessage { get; set; } = string.Empty;
+
+        /// <summary>Total size in bytes of the torrent as reported by the BitTorrent client.</summary>
+        public long ClientSizeBytes { get; set; }
+
+        /// <summary>Bytes downloaded so far as reported by the BitTorrent client.</summary>
+        public long ClientDownloadedBytes { get; set; }
+
+        /// <summary>The torrent's state as reported by the client (e.g. "downloading",
+        /// "pausedUP", "checking", "stalledUP").</summary>
+        public string ClientState { get; set; } = string.Empty;
     }
 }

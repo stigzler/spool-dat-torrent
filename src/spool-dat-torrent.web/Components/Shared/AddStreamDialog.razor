@@ -1,0 +1,154 @@
+@using SpoolDatTorrent.Core.Configuration
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudTextField @bind-Value="_name"
+                          Label="Name (optional)"
+                          HelperText="A friendly display name. Defaults to the uploaded torrent's filename."
+                          Variant="Variant.Outlined" FullWidth="true" />
+
+            <MudSelect T="string" @bind-Value="_server"
+                       Label="Server Profile"
+                       HelperText="BitTorrent client used for this stream. Defaults to the configured default."
+                       Variant="Variant.Outlined" FullWidth="true">
+                @foreach (var name in Settings.TorrentServers.Keys)
+                {
+                    <MudSelectItem Value="@name">@name</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudTextField @bind-Value="_target"
+                          Label="Destination folder (this stream, optional)"
+                          HelperText="A real folder path where completed files for this stream are moved to. Leave blank to use the global default (set in Settings). Example: C:\Spooled\psx or /mnt/pool/Media/Games/roms/psx."
+                          Variant="Variant.Outlined" FullWidth="true" />
+            <MudTextField @bind-Value="_filter"
+                          Label="File Filter (optional)"
+                          HelperText="File matching pattern, e.g. *USA*. Defaults to *.*."
+                          Variant="Variant.Outlined" FullWidth="true" />
+            <MudSelect T="string" @bind-Value="_strategy"
+                       Label="Strategy"
+                       Variant="Variant.Outlined" FullWidth="true">
+                <MudSelectItem Value="@SpoolingStrategy.MoveFiles.ToString()">MoveFiles</MudSelectItem>
+                <MudSelectItem Value="@SpoolingStrategy.Pause.ToString()">Pause</MudSelectItem>
+                <MudSelectItem Value="@SpoolingStrategy.RateLimit.ToString()">RateLimit</MudSelectItem>
+            </MudSelect>
+
+            <MudDivider />
+            <MudText Typo="Typo.subtitle2">Torrent</MudText>
+            <MudTextField @bind-Value="_magnet"
+                          Label="Or paste a magnet link / info-hash"
+                          HelperText="Leave blank if uploading a .torrent file."
+                          Variant="Variant.Outlined" FullWidth="true" />
+            <InputFile OnChange="OnTorrentFileChanged" Accept=".torrent" />
+            @if (_torrentFile != null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">@_torrentFile.Name</MudAlert>
+            }
+
+            <MudText Typo="Typo.subtitle2">DAT File</MudText>
+            <InputFile OnChange="OnDatFileChanged" Accept=".dat" />
+            @if (_datFile != null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">@_datFile.Name</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Add" Disabled="!_isValid">Add Stream</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialogInstance { get; set; } = default!;
+
+    [Inject] private GlobalSpoolSettings Settings { get; set; } = default!;
+    [Inject] private Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private string _server = string.Empty;
+    private string _target = string.Empty;
+    private string _filter = string.Empty;
+    private string _strategy = SpoolingStrategy.MoveFiles.ToString();
+    private string _magnet = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        // Default the server profile to the configured default so the user doesn't have to
+        // pick one (and can't accidentally add a stream with no server).
+        _server = Settings.DefaultServerProfile;
+    }
+
+    private IBrowserFile? _torrentFile;
+    private IBrowserFile? _datFile;
+
+    private bool _isValid => (_torrentFile != null || !string.IsNullOrWhiteSpace(_magnet)) && _datFile != null;
+
+    private void Cancel() => MudDialogInstance.Close(DialogResult.Cancel());
+
+    private void OnTorrentFileChanged(InputFileChangeEventArgs e)
+    {
+        _torrentFile = e.File;
+    }
+
+    private void OnDatFileChanged(InputFileChangeEventArgs e)
+    {
+        _datFile = e.File;
+    }
+
+    private async Task AddAsync()
+    {
+        string? torrentPath = null;
+        string? datPath = null;
+
+        try
+        {
+            var uploadDir = Path.Combine(Path.GetTempPath(), "sdt-uploads");
+            Directory.CreateDirectory(uploadDir);
+
+            if (_torrentFile != null)
+            {
+                torrentPath = Path.Combine(uploadDir, Guid.NewGuid().ToString("N") + ".torrent");
+                await using (var fs = File.Create(torrentPath))
+                {
+                    await _torrentFile.OpenReadStream(maxAllowedSize: 1L * 1024 * 1024 * 1024).CopyToAsync(fs);
+                }
+            }
+
+            if (_datFile != null)
+            {
+                datPath = Path.Combine(uploadDir, Guid.NewGuid().ToString("N") + ".dat");
+                await using (var fs = File.Create(datPath))
+                {
+                    await _datFile.OpenReadStream(maxAllowedSize: 1L * 1024 * 1024 * 1024).CopyToAsync(fs);
+                }
+            }
+
+            var result = new AddStreamForm
+            {
+                Name = string.IsNullOrWhiteSpace(_name) ? null : _name.Trim(),
+                Server = string.IsNullOrWhiteSpace(_server) ? null : _server,
+                Target = string.IsNullOrWhiteSpace(_target) ? null : _target.Trim(),
+                Filter = string.IsNullOrWhiteSpace(_filter) ? null : _filter.Trim(),
+                Strategy = _strategy,
+                TorrentFilePath = torrentPath,
+                OriginalTorrentName = _torrentFile?.Name,
+                DatFilePath = datPath,
+                OriginalDatName = _datFile?.Name,
+                Magnet = string.IsNullOrWhiteSpace(_magnet) ? null : _magnet.Trim()
+            };
+
+            MudDialogInstance.Close(DialogResult.Ok(result));
+        }
+        catch (Exception ex)
+        {
+            MudDialogInstance.Close(DialogResult.Ok(new AddStreamForm { Error = ex.Message }));
+        }
+    }
+
+    private void Add()
+    {
+        _ = AddAsync();
+    }
+}

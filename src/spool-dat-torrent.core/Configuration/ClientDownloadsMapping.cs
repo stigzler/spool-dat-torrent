@@ -6,9 +6,13 @@ using System.Text;
 namespace SpoolDatTorrent.Core.Configuration
 {
     /// <summary>
-    /// A translation object to translate the bittorrent client's reported download paths into
-    /// a SpoolDatTorrent Virtual path. Translations to real system paths as per below eg compose files:
-    /// 
+    /// Optional translation for DOCKER installs only, where qBittorrent and SpoolDatTorrent
+    /// run in separate containers that see the same underlying disk through DIFFERENT mount
+    /// points. If the same host folder is mounted at the same path in both containers (the
+    /// simplest setup), leave both properties blank — no mapping is needed.
+    ///
+    /// When they differ (e.g. compose files):
+    ///
     /// services:
     /// qbittorrent:
     ///  image: lscr.io/linuxserver/qbittorrent:latest
@@ -27,12 +31,13 @@ namespace SpoolDatTorrent.Core.Configuration
     public class ClientDownloadsMapping
     {
         /// <summary>
-        /// Virtual path reported by the bittorrent client API (e.g., "/downloads/complete")
+        /// The download path as the bittorrent client API reports it (e.g., "/downloads/complete").
         /// </summary>
-        public string ClientVirtualPrefix { get; set; } = string.Empty; // e.g., "/downloads" inside Docker
+        public string ClientVirtualPrefix { get; set; } = string.Empty;
 
         /// <summary>
-        /// The virtual path mapped inside the SDT container (e.g., "/app/scratch")
+        /// The path SpoolDatTorrent uses for the SAME location (e.g., "/app/scratch").
+        /// Leave both blank when qBittorrent and SDT see the same path.
         /// </summary>
         public string AppVirtualPrefix { get; set; } = string.Empty;
     }

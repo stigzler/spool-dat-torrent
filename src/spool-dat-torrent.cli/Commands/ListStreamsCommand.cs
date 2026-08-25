@@ -19,17 +19,7 @@ namespace SpoolDatTorrent.Cli.Commands
     {
         protected override async Task<int> ExecuteAsync(CommandContext context, ListStreamsSettings settings, CancellationToken cancellationToken)
         {
-            var configuration = new ConfigurationBuilder()
-                .AddJsonFile(SettingsManager.GetSettingsPath(), optional: false, reloadOnChange: true)
-                .Build();
-
-            var services = new ServiceCollection();
-            services.Configure<GlobalSpoolSettings>(configuration);
-            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
-            services.AddHttpClient();
-            services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
-
-            var serviceProvider = services.BuildServiceProvider();
+            var serviceProvider = CliServiceProvider.Build();
 
             var streamsCommand = new Core.Commands.ListStreamsCommand(
                 serviceProvider.GetRequiredService<IServiceScopeFactory>());

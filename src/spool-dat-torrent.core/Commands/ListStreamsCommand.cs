@@ -27,7 +27,7 @@ namespace SpoolDatTorrent.Core.Commands
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
-            await db.Database.EnsureCreatedAsync(cancellationToken);
+            await db.Database.MigrateAsync(cancellationToken);
 
             var query = db.Streams.AsNoTracking().AsQueryable();
 
@@ -45,6 +45,7 @@ namespace SpoolDatTorrent.Core.Commands
                     Name = s.Name,
                     TorrentIdentifier = s.TorrentIdentifier,
                     DatFilePath = s.DatFilePath,
+                    OriginalDatPath = s.OriginalDatPath,
                     SpoolingTargetOverride = s.SpoolingTargetOverride,
                     ServerProfileId = s.ServerProfileId,
                     Status = s.Status.ToString(),

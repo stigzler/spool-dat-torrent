@@ -387,12 +387,38 @@ These live in `core/Commands/` and are reusable by CLI, web, desktop:
 
 - **Info-hash** is the canonical stream identifier (40-char hex). `TorrentMetadataHelper.ResolveInfoHash` handles `.torrent` path, magnet (base32/hex), or raw hash.
 - **Stream IDs reuse the lowest free value** (not auto-increment) — `AddStreamCommand.GetLowestFreeStreamIdAsync`.
-- **`EnsureCreatedAsync`** (no migrations) — schema changes require deleting `spooldattorrent.db`.
+- **EF Core Migrations** (not `EnsureCreatedAsync`) — schema changes require a new migration via `dotnet ef migrations add`. Both web (`Program.cs`) and CLI (`CliServiceProvider`) call `Database.Migrate()` on startup, so existing DBs upgrade automatically. See the "Database migrations" section below.
 - **Config file** is `config.json` (not `spool_settings.json`).
 - **DB file** is `spooldattorrent.db` (not `cli_test.db`).
 - **Logging** via `Logger.Log` (static, writes to `SpoolDatTorrent.log`). `LogStatus` in the engine routes to the reporter (or console if no reporter).
 - **The engine is stateless-by-design** for resume: it re-derives per-file state from qBittorrent + filesystem each cycle, not from the DB.
 - **Only `Active` streams are spooled.** `Error` re-activates on restart; `Paused`/`Completed` do not.
+
+## 16.5 Database migrations
+
+We use **EF Core Migrations** for the SQLite database (`spooldattorrent.db`), not `EnsureCreatedAsync`. This lets existing databases upgrade **seamlessly** when the schema changes — no manual steps, no data loss.
+
+- **Adding a new migration** (do this whenever the model changes — new/renamed/removed column, table, or relation):
+
+  ```bash
+  dotnet ef migrations add <MigrationName> --project src/spool-dat-torrent.core
+  ```
+
+  Migration files are generated under `src/spool-dat-torrent.core/Data/Migrations/`.
+
+- **Migrations are applied automatically at startup** by both hosts:
+  - Web: `Program.cs` calls `db.Database.Migrate()`.
+  - CLI: `CliServiceProvider.Build()` calls `db.Database.Migrate()`.
+  You do **not** run `dotnet ef database update` — the app does it.
+
+- **Design-time factory:** `SpoolDbContextFactory` (in `Core/Data/`) lets `dotnet ef` instantiate the context from the class library (which has no composition root).
+
+- **Tooling:** `dotnet-ef` global tool (10.0.11) is installed; `Microsoft.EntityFrameworkCore.Design` is referenced in the Core csproj.
+
+- **Gotchas:**
+  - Commit the migration file(s) together with the code that changes the model — the migration is part of the release.
+  - Do **not** delete `spooldattorrent.db` to "fix" a schema mismatch — that loses data. Add a migration instead.
+  - To undo an unapplied migration during dev: `dotnet ef migrations remove --project src/spool-dat-torrent.core`.
 
 ## 17. WebUI Development
 
@@ -433,10 +459,10 @@ First working slice of the Blazor web UI: layout + Settings page + single-admin 
 ## Outstanding web UI work (next milestones)
 
 - **Clients page** — server profile CRUD, with two rules: block deleting the *last* profile (must keep ≥1), and on deleting the *default* profile, warn + reassign default to first remaining. (Core's `DeleteServerProfile` already reassigns default; the "keep ≥1" guard is new.)
-- **Streams page** — list + live progress.
+- **Streams page** — list + live progress (implemented: cards, add/cancel/remove, live polling via `InMemoryProgressStore`). Further polish (global Spool/Pause control) pending.
 - **Spool/Pause page**.
-- **Register `SpoolingEngine` as a hosted `BackgroundService`** (not done yet — engine isn't running in the web app).
-- **`BlazorProgressReporter`** — a singleton implementing `ISpoolingProgressReporter` (the seam already exists in Core).
+- **Register `SpoolingEngine` as a hosted `BackgroundService`** — DONE: `SpoolEngineHostedService` runs the engine loop at `PollIntervalSeconds`, writing snapshots to `InMemoryProgressStore`.
+- **`BlazorProgressReporter`** — replaced by `InMemoryProgressStore` (singleton implementing `ISpoolingProgressReporter`) in Core.
 
 ## Current branch
 

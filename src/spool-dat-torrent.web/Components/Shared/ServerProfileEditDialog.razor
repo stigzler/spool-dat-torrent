@@ -60,23 +60,23 @@
 
         <MudDivider Class="my-3" />
 
-        <MudText Typo="Typo.subtitle2" Class="mb-1">Downloads Path Mapping</MudText>
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Docker path mapping (only for container installs)</MudText>
         <MudText Typo="Typo.caption" Class="mb-3">
-            Translate the client's reported download paths to SDT's paths. Leave both blank when both apps see the same paths.
+            Only needed when qBittorrent and SpoolDatTorrent run in separate containers that see the same disk at different paths. If you mount the same host folder at the same path in both containers, leave both blank — no mapping is required.
         </MudText>
         <MudGrid>
             <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="Profile.ClientDownloadsMapping.ClientVirtualPrefix"
                               @bind-Value:after="ScheduleSave"
-                              Label="Client Virtual Prefix"
-                              HelperText="Path the client API reports, e.g. /downloads"
+                              Label="Path qBittorrent reports"
+                              HelperText="The download path as the client API reports it, e.g. /downloads"
                               Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="Profile.ClientDownloadsMapping.AppVirtualPrefix"
                               @bind-Value:after="ScheduleSave"
-                              Label="App Virtual Prefix"
-                              HelperText="Path mapped inside SDT, e.g. /app/scratch"
+                              Label="Same path as seen by SDT"
+                              HelperText="The path SpoolDatTorrent uses for the same location. Leave both blank unless they differ."
                               Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
         </MudGrid>

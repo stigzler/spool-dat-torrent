@@ -9,6 +9,13 @@ namespace SpoolDatTorrent.Core.Configuration
     {
         public string DefaultServerProfile { get; set; } = "LocalQBit";
         public Dictionary<string, TorrentServerProfile> TorrentServers { get; set; } = new();
+
+        /// <summary>
+        /// A real folder path on the machine running SpoolDatTorrent where completed files
+        /// are moved to by default. Files go into a subfolder named after the torrent.
+        /// A stream's per-stream destination override takes precedence over this.
+        /// Examples: "C:\Spooled Output" (Windows) or "/mnt/pool/Media/Games/roms/unsorted" (Linux).
+        /// </summary>
         public string DefaultSpoolingTarget { get; set; } = string.Empty;
 
         /// <summary>
@@ -53,5 +60,12 @@ namespace SpoolDatTorrent.Core.Configuration
         /// </summary>
         [Range(0, 20)]
         public int SpoolingCapSafetyMarginPercent { get; set; } = 5;
+
+        /// <summary>
+        /// Whether the web UI shows a confirmation dialog before cancelling/removing a
+        /// stream. When true, the delete action asks for confirmation (with a "don't ask
+        /// again" checkbox); when false, the action proceeds immediately.
+        /// </summary>
+        public bool ConfirmDeleteConfirmation { get; set; } = true;
     }
 }

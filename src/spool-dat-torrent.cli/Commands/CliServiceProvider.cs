@@ -50,7 +50,18 @@ namespace SpoolDatTorrent.Cli.Commands
             services.AddTransient<DeleteServerProfileCommand>();
             services.AddTransient<AddServerProfileCommand>();
 
-            return services.BuildServiceProvider();
+            var provider = services.BuildServiceProvider();
+
+            // Apply any pending EF migrations so existing databases are upgraded seamlessly
+            // (the Core commands also migrate on demand, but doing it here covers any direct
+            // DbContext usage, e.g. the "fresh" path in add).
+            using (var scope = provider.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
+                db.Database.Migrate();
+            }
+
+            return provider;
         }
     }
 }

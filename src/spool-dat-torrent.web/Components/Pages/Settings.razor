@@ -14,8 +14,8 @@
         <MudItem xs="12" md="6">
             <MudTextField @bind-Value="_settings.DefaultSpoolingTarget"
                           @bind-Value:after="ScheduleSave"
-                          Label="Default Spooling Target"
-                          HelperText="Root folder where completed ROMs are moved to. Per-stream overrides take precedence."
+                          Label="Default destination folder"
+                          HelperText="A real folder path on the machine running SpoolDatTorrent where completed files are moved to. Files go into a subfolder named after the torrent. Example: C:\Spooled Output (Windows) or /mnt/pool/Media/Games/roms/unsorted (Linux). A stream with its own destination overrides this."
                           Variant="Variant.Outlined" FullWidth="true" />
         </MudItem>
         <MudItem xs="12" md="6">
@@ -84,6 +84,13 @@
                           AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
                           OnAdornmentClick="TogglePasswordVisibility"
                           AdornmentAriaLabel="Toggle password visibility" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudSwitch T="bool" @bind-Value="_settings.ConfirmDeleteConfirmation"
+                       @bind-Value:after="ScheduleSave"
+                       Label="Confirm before deleting a stream"
+                       Color="Color.Primary"
+                       Class="mt-4" />
         </MudItem>
     </MudGrid>
 </MudCard>

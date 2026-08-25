@@ -26,17 +26,7 @@ namespace SpoolDatTorrent.Cli.Commands
                 return 0;
             }
 
-            var configuration = new ConfigurationBuilder()
-                .AddJsonFile(SettingsManager.GetSettingsPath(), optional: false, reloadOnChange: true)
-                .Build();
-
-            var services = new ServiceCollection();
-            services.Configure<GlobalSpoolSettings>(configuration);
-            services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
-            services.AddHttpClient();
-            services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
-
-            var serviceProvider = services.BuildServiceProvider();
+            var serviceProvider = CliServiceProvider.Build();
 
             var command = new Core.Commands.CancelAllStreamsCommand(
                 serviceProvider.GetRequiredService<IBitTorrentClientFactory>(),

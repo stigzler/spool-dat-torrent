@@ -1,7 +1,298 @@
+@implements IDisposable
 @page "/streams"
+@using SpoolDatTorrent.Core.Commands
+@using SpoolDatTorrent.Core.Configuration
+@using SpoolDatTorrent.Core.DTOs
+@using SpoolDatTorrent.Core.Models
+@using SpoolDatTorrent.Core.Progress
+@using SpoolDatTorrent.Web.Components.Shared
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject ListStreamsCommand ListStreamsCommand
+@inject SetStreamStatusCommand SetStreamStatusCommand
+@inject RetryStreamCommand RetryStreamCommand
+@inject CancelStreamCommand CancelStreamCommand
+@inject AddStreamCommand AddStreamCommand
+@inject InMemoryProgressStore ProgressStore
+@inject GlobalSpoolSettings Settings
 
 <PageTitle>Streams</PageTitle>
 
-<h1 class="mb-4">Streams</h1>
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h1 class="mb-0">Streams</h1>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialogAsync">Add Stream</MudButton>
+</div>
 
-<MudAlert Severity="Severity.Info">The streams list will be implemented in a later milestone.</MudAlert>
+<MudExpansionPanels MultiExpansion="false" Class="mb-4">
+    <MudExpansionPanel Text="Where do my files go?" Icon="@Icons.Material.Filled.HelpOutline" MaxHeight="280">
+        <MudStack Spacing="2" Class="px-3 pb-3">
+            <MudText><b>Destination folder</b> is a real path on the machine running SpoolDatTorrent — not a virtual or browser path.</MudText>
+            <MudText>Each card shows where that stream's completed files are moved to. If it has a <b>custom</b> destination, that path is used. Otherwise files go into <code>[Default destination folder]\[torrent name]</code>.</MudText>
+            <MudText><b>Desktop install (this app + qBittorrent on the same machine):</b> use a normal Windows path, e.g. <code>C:\Spooled Output</code>. No path mapping is needed.</MudText>
+            <MudText><b>Linux server:</b> use a real path, e.g. <code>/mnt/pool/Media/Games/roms/unsorted</code>.</MudText>
+            <MudText><b>Docker:</b> the "Docker path mapping" on each server profile is only needed if qBittorrent and SpoolDatTorrent see the same disk at different paths. If you mount the same folder at the same path in both containers, leave it blank.</MudText>
+            <MudText>To change where files go, edit <b>Default destination folder</b> in Settings, or set a per-stream destination when adding a stream.</MudText>
+        </MudStack>
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Class="ma-auto" />
+}
+else if (_streams.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        No streams yet. Use "Add Stream" above to start spooling 1G1R ROM sets from a torrent.
+    </MudAlert>
+}
+else
+{
+    @foreach (var stream in _streams)
+    {
+        var live = _liveSnapshots.FirstOrDefault(s => s.TorrentIdentifier == stream.TorrentIdentifier);
+        <StreamCard Stream="stream"
+                    Live="live"
+                    OnStatusChange="() => HandleStatusActionAsync(stream)"
+                    OnCancel="() => ConfirmAndCancelAsync(stream)"
+                    OnRemove="() => ConfirmAndRemoveAsync(stream)" />
+    }
+}
+
+@code {
+    private List<StreamDetails> _streams = new();
+    private List<StreamProgressInfo> _liveSnapshots = new();
+    private bool _loading = true;
+    private Timer? _pollTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStreamsAsync();
+        StartPolling();
+    }
+
+    private async Task LoadStreamsAsync()
+    {
+        try
+        {
+            var streams = await ListStreamsCommand.ExecuteAsync();
+            _streams = streams.ToList();
+            _liveSnapshots = ProgressStore.GetStreams().ToList();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void StartPolling()
+    {
+        var intervalMs = Math.Max(1, Settings.PollIntervalSeconds) * 1000;
+        _pollTimer = new Timer(async _ =>
+        {
+            try
+            {
+                _liveSnapshots = ProgressStore.GetStreams().ToList();
+                await InvokeAsync(StateHasChanged);
+            }
+            catch
+            {
+                // Ignore poll errors; next tick retries.
+            }
+        }, null, intervalMs, intervalMs);
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+
+    private async Task OpenAddDialogAsync()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AddStreamDialog>("Add Stream", options);
+        var result = await dialog.Result;
+
+        if (result.Canceled || result.Data is not AddStreamForm form)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(form.Error))
+        {
+            Snackbar.Add($"Could not add stream: {form.Error}", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            // Resolve the torrent identifier from either an uploaded .torrent file or a
+            // magnet/hash. The .dat path is always the uploaded server-side file.
+            string torrentInput = form.TorrentFilePath ?? form.Magnet ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(torrentInput) || string.IsNullOrWhiteSpace(form.DatFilePath))
+            {
+                Snackbar.Add("You must provide a torrent and a DAT file.", Severity.Error);
+                return;
+            }
+
+            var torrentIdentifier = SpoolDatTorrent.Core.Helpers.TorrentMetadataHelper.ResolveInfoHash(torrentInput);
+            SpoolingStrategy? strategy = null;
+            if (Enum.TryParse<SpoolingStrategy>(form.Strategy, ignoreCase: true, out var parsed))
+            {
+                strategy = parsed;
+            }
+
+            // Default the display name to the uploaded torrent's original filename (with the
+            // .torrent extension stripped) when the user didn't provide one. We use the
+            // browser's original filename, not the GUID temp path the upload was saved to.
+            string? resolvedName = form.Name;
+            if (string.IsNullOrWhiteSpace(resolvedName) && !string.IsNullOrWhiteSpace(form.OriginalTorrentName))
+            {
+                resolvedName = SpoolDatTorrent.Core.Helpers.TorrentMetadataHelper.GetTorrentName(form.OriginalTorrentName);
+            }
+
+            // Only pass an originalTorrentPath when we actually uploaded a .torrent file;
+            // otherwise the magnet/hash is used (so AddStreamCommand won't try to cache a file).
+            var stream = await AddStreamCommand.ExecuteAsync(
+                torrentIdentifier: torrentIdentifier,
+                datFilePath: form.DatFilePath,
+                name: resolvedName,
+                spoolingTargetOverride: form.Target,
+                serverProfileId: form.Server,
+                originalTorrentPath: form.TorrentFilePath,
+                originalMagnet: form.Magnet,
+                originalDatPath: form.OriginalDatName,
+                filter: form.Filter,
+                strategy: strategy);
+
+            Snackbar.Add($"Stream '{stream.Name}' added.", Severity.Success);
+            await LoadStreamsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not add stream: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task HandleStatusActionAsync(StreamDetails stream)
+    {
+        try
+        {
+            bool ok = stream.Status switch
+            {
+                "Active" => await SetStreamStatusCommand.ExecuteByIdAsync(stream.Id, StreamLifecycleStatus.Paused),
+                "Paused" => await SetStreamStatusCommand.ExecuteByIdAsync(stream.Id, StreamLifecycleStatus.Active),
+                "Error" => await RetryStreamCommand.ExecuteByIdAsync(stream.Id),
+                _ => true
+            };
+
+            if (ok)
+            {
+                Snackbar.Add("Stream updated.", Severity.Success);
+                await LoadStreamsAsync();
+            }
+            else
+            {
+                Snackbar.Add("Stream not found.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Action failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmAndCancelAsync(StreamDetails stream)
+    {
+        var proceed = await ConfirmDeleteAsync(stream, "Cancel", "Cancel stream");
+        if (!proceed.Confirmed)
+        {
+            return;
+        }
+        ApplyDontAskAgain(proceed);
+
+        try
+        {
+            bool ok = await CancelStreamCommand.ExecuteByIdAsync(stream.Id);
+            if (ok)
+            {
+                ProgressStore.Remove(stream.TorrentIdentifier);
+                Snackbar.Add($"Stream '{stream.Name}' cancelled.", Severity.Success);
+                await LoadStreamsAsync();
+            }
+            else
+            {
+                Snackbar.Add("Stream not found.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Cancel failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ConfirmAndRemoveAsync(StreamDetails stream)
+    {
+        var proceed = await ConfirmDeleteAsync(stream, "Remove", "Remove stream");
+        if (!proceed.Confirmed)
+        {
+            return;
+        }
+        ApplyDontAskAgain(proceed);
+
+        try
+        {
+            // Removing a completed stream: the torrent is no longer on the client, so we
+            // only need to delete the DB row. CancelStreamCommand handles that path.
+            bool ok = await CancelStreamCommand.ExecuteByIdAsync(stream.Id);
+            if (ok)
+            {
+                ProgressStore.Remove(stream.TorrentIdentifier);
+                Snackbar.Add($"Stream '{stream.Name}' removed.", Severity.Success);
+                await LoadStreamsAsync();
+            }
+            else
+            {
+                Snackbar.Add("Stream not found.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Remove failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ApplyDontAskAgain(StreamDeleteConfirmResult result)
+    {
+        if (result.DontAskAgain && Settings.ConfirmDeleteConfirmation)
+        {
+            Settings.ConfirmDeleteConfirmation = false;
+            SettingsManager.SaveSettings(Settings);
+        }
+    }
+
+    private async Task<StreamDeleteConfirmResult> ConfirmDeleteAsync(StreamDetails stream, string confirmLabel, string title)
+    {
+        if (!Settings.ConfirmDeleteConfirmation)
+        {
+            return new StreamDeleteConfirmResult { Confirmed = true };
+        }
+
+        var parameters = new DialogParameters
+        {
+            { "ContentText", $"Cancel stream '{stream.Name}'? This cannot be undone." },
+            { "ConfirmLabel", confirmLabel }
+        };
+
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<StreamDeleteConfirmDialog>(title, parameters, options);
+        var result = await dialog.Result;
+
+        if (result.Canceled || result.Data is not StreamDeleteConfirmResult data)
+        {
+            return new StreamDeleteConfirmResult { Confirmed = false };
+        }
+
+        return data;
+    }
+}

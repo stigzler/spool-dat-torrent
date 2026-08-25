@@ -78,6 +78,18 @@ namespace SpoolDatTorrent.Core.Services
             return string.Empty;
         }
 
+        public async Task<TorrentInfoDto?> GetTorrentInfoAsync(string torrentId, CancellationToken cancellationToken = default)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/v2/torrents/info?hashes={torrentId}");
+            AddAuthHeader(request);
+
+            var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode) return null;
+
+            var torrents = await response.Content.ReadFromJsonAsync<TorrentInfoDto[]>(cancellationToken: cancellationToken);
+            return torrents is { Length: > 0 } ? torrents[0] : null;
+        }
+
         public async Task AddTorrentAsync(string torrentPathOrMagnet, string? savePath = null, bool addPaused = true, CancellationToken cancellationToken = default)
         {
             using var content = new MultipartFormDataContent();

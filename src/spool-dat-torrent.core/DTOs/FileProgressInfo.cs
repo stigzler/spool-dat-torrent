@@ -14,5 +14,8 @@ namespace SpoolDatTorrent.Core.DTOs
 
         /// <summary>Total size of the file in bytes.</summary>
         public long SizeBytes { get; set; }
+
+        /// <summary>Display status of this file within the batch.</summary>
+        public string Status { get; set; } = string.Empty;
     }
 }

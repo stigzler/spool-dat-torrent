@@ -60,6 +60,22 @@ namespace SpoolDatTorrent.Core.Helpers
             return GetInfoHash(torrentPathOrHashOrMagnet);
         }
 
+        /// <summary>
+        /// Get a default display name for a .torrent file: its original filename with the
+        /// ".torrent" extension stripped. This is more informative than the torrent's
+        /// internal "name" field (e.g. "Minerva_Myrient - Redump - Sony - PlayStation").
+        /// </summary>
+        public static string? GetTorrentName(string torrentFilePath)
+        {
+            var fileName = Path.GetFileName(torrentFilePath);
+            if (fileName.EndsWith(".torrent", StringComparison.OrdinalIgnoreCase))
+            {
+                fileName = fileName[..^".torrent".Length];
+            }
+
+            return string.IsNullOrWhiteSpace(fileName) ? "Stream" : fileName;
+        }
+
         private static string Base32ToHex(string base32)
         {
             const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";

@@ -107,7 +107,7 @@ namespace SpoolDatTorrent.Core.Commands
             // Ensure the schema exists. The DB is created lazily on first stream use, so a
             // fresh install may not have the Streams table yet — querying it directly would
             // throw "no such table: Streams".
-            await db.Database.EnsureCreatedAsync(cancellationToken);
+            await db.Database.MigrateAsync(cancellationToken);
 
             var names = await db.Streams
                 .Where(s => s.ServerProfileId == profileName ||

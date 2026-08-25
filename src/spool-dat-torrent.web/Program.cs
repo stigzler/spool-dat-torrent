@@ -7,8 +7,10 @@ using MudBlazor.Services;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
 using SpoolDatTorrent.Core.Interfaces;
+using SpoolDatTorrent.Core.Progress;
 using SpoolDatTorrent.Core.Services;
 using SpoolDatTorrent.Web.Components;
+using SpoolDatTorrent.Web.Services;
 using System.Security.Claims;
 
 namespace SpoolDatTorrent.Web
@@ -22,6 +24,14 @@ namespace SpoolDatTorrent.Web
             // Add services to the container.
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
+
+            // Raise the form/file-upload limits. Torrent files for large 1G1R sets can be
+            // several MB, so allow generous per-file and total sizes.
+            builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+            {
+                options.MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024; // 2 GB total
+                options.ValueLengthLimit = int.MaxValue;
+            });
 
             // Add MudBlazor services
             builder.Services.AddMudServices(config =>
@@ -38,14 +48,23 @@ namespace SpoolDatTorrent.Web
             builder.Services.AddSingleton(settings);
             builder.Services.AddSingleton<IOptions<GlobalSpoolSettings>>(Options.Create(settings));
 
-            // Core services (shared with the CLI). The engine is NOT started as a hosted
-            // service yet — that arrives with the live-progress milestone.
+            // Core services (shared with the CLI). The engine runs as a hosted service so
+            // live progress snapshots are available to the Streams page.
             builder.Services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
             builder.Services.AddTransient<IDatParserService, LogiqxDatParserService>();
+            builder.Services.AddSingleton<InMemoryProgressStore>();
+            builder.Services.AddSingleton<ISpoolingProgressReporter>(sp => sp.GetRequiredService<InMemoryProgressStore>());
+            builder.Services.AddTransient<SpoolingEngine>();
+            builder.Services.AddHostedService<SpoolEngineHostedService>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.DeleteServerProfileCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.AddServerProfileCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.AddStreamCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.CancelStreamCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.SetStreamStatusCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.RetryStreamCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.ListStreamsCommand>();
 
             // Cookie authentication (single admin).
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -58,6 +77,14 @@ namespace SpoolDatTorrent.Web
             builder.Services.AddCascadingAuthenticationState();
 
             var app = builder.Build();
+
+            // Apply any pending EF migrations on startup so existing databases are upgraded
+            // seamlessly when a new schema version ships (no manual steps for the user).
+            using (var scope = app.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<SpoolDatTorrent.Core.Data.SpoolDbContext>();
+                db.Database.Migrate();
+            }
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment())

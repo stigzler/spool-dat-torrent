@@ -14,6 +14,10 @@ namespace SpoolDatTorrent.Core.Models
         public string? OriginalTorrentPath { get; set; }
         public string? OriginalMagnet { get; set; }
 
+        /// <summary>Original path of the DAT file supplied when the stream was added. Kept so
+        /// the UI can display the real DAT filename rather than the GUID cache/temp name.</summary>
+        public string? OriginalDatPath { get; set; }
+
         /// <summary>Cached copy of the .torrent file, set when the stream is added. Null if not cached yet.</summary>
         public string? CachedTorrentPath { get; set; }
 

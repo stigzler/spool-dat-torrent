@@ -41,13 +41,14 @@ namespace SpoolDatTorrent.Core.Commands
             string? serverProfileId,
             string? originalTorrentPath = null,
             string? originalMagnet = null,
+            string? originalDatPath = null,
             string? filter = null,
             SpoolingStrategy? strategy = null,
             CancellationToken cancellationToken = default)
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
-            await db.Database.EnsureCreatedAsync(cancellationToken);
+            await db.Database.MigrateAsync(cancellationToken);
 
             var existing = await db.Streams.FirstOrDefaultAsync(s => s.TorrentIdentifier == torrentIdentifier, cancellationToken);
 
@@ -70,6 +71,7 @@ namespace SpoolDatTorrent.Core.Commands
                 if (cachedDat != null) existing.CachedDatPath = cachedDat;
                 if (!string.IsNullOrWhiteSpace(originalTorrentPath)) existing.OriginalTorrentPath = originalTorrentPath;
                 if (!string.IsNullOrWhiteSpace(originalMagnet)) existing.OriginalMagnet = originalMagnet;
+                if (!string.IsNullOrWhiteSpace(originalDatPath)) existing.OriginalDatPath = originalDatPath;
 
                 existing.Status = StreamLifecycleStatus.Active;
                 if (!string.IsNullOrWhiteSpace(filter)) existing.FileFilter = filter;
@@ -100,6 +102,7 @@ namespace SpoolDatTorrent.Core.Commands
                 Status = StreamLifecycleStatus.Active,
                 OriginalTorrentPath = originalTorrentPath,
                 OriginalMagnet = originalMagnet,
+                OriginalDatPath = originalDatPath,
                 CachedTorrentPath = cacheResult.CachedTorrentPath,
                 CachedDatPath = cacheResult.CachedDatPath,
                 FileFilter = string.IsNullOrWhiteSpace(filter) ? "*.*" : filter,
