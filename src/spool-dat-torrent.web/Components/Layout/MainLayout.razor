@@ -1,5 +1,8 @@
 ﻿@using MudBlazor
+@using Microsoft.AspNetCore.Http
+@using Microsoft.AspNetCore.Components.Web
 @inherits LayoutComponentBase
+@implements IDisposable
 
 <MudThemeProvider Theme="AppTheme.Theme" @bind-IsDarkMode="_isDarkMode" />
 <MudDialogProvider />
@@ -42,26 +45,68 @@
     [Inject]
     private IJSRuntime JS { get; set; } = default!;
 
+    [Inject]
+    private IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
+
+    [Inject]
+    private PersistentComponentState PersistentState { get; set; } = default!;
+
     private bool _isDarkMode;
+    private PersistingComponentStateSubscription _subscription;
+
+    protected override void OnInitialized()
+    {
+        // During prerender (server-side, before the interactive circuit), HttpContext IS
+        // available. Read the cookie and persist it so the interactive client can restore
+        // it without touching HttpContext (which is null there). This makes the theme
+        // correct on the very first render — no light-mode flash.
+        if (HttpContextAccessor.HttpContext is not null)
+        {
+            var cookie = HttpContextAccessor.HttpContext.Request.Cookies["sdt_darkmode"];
+            _isDarkMode = bool.TryParse(cookie, out var dark) && dark;
+            _subscription = PersistentState.RegisterOnPersisting(PersistDarkMode);
+        }
+        else
+        {
+            // Interactive client: restore from the persisted prerender state.
+            if (PersistentState.TryTakeFromJson("sdt_darkmode", out bool dark))
+            {
+                _isDarkMode = dark;
+            }
+        }
+    }
+
+    private Task PersistDarkMode()
+    {
+        PersistentState.PersistAsJson("sdt_darkmode", _isDarkMode);
+        return Task.CompletedTask;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            // Restore the saved dark-mode preference from localStorage.
-            var saved = await JS.InvokeAsync<string>("localStorage.getItem", "sdt_darkmode");
-            if (bool.TryParse(saved, out var dark) && dark)
-            {
-                _isDarkMode = true;
-                StateHasChanged();
-            }
+            // Also keep localStorage in sync (used by the pre-paint background script in
+            // App.razor and as a fallback).
+            await JS.InvokeVoidAsync("localStorage.setItem", "sdt_darkmode", _isDarkMode.ToString());
         }
     }
 
     private async Task ToggleDarkMode(bool value)
     {
         _isDarkMode = value;
-        await JS.InvokeVoidAsync("localStorage.setItem", "sdt_darkmode", value.ToString());
+        var cookieValue = value.ToString();
+
+        // Write both localStorage (pre-paint background script + fallback) and a cookie
+        // (read by the server during prerender so the theme is correct on first render).
+        // document.cookie is a property, not a function, so use eval to assign it.
+        await JS.InvokeVoidAsync("localStorage.setItem", "sdt_darkmode", cookieValue);
+        await JS.InvokeVoidAsync("eval", $"document.cookie = 'sdt_darkmode={cookieValue}; path=/; max-age=31536000'");
+    }
+
+    public void Dispose()
+    {
+        _subscription.Dispose();
     }
 
     private void Logout()

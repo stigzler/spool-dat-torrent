@@ -24,6 +24,7 @@ namespace SpoolDatTorrent.Web
             // Add services to the container.
             builder.Services.AddRazorComponents()
                 .AddInteractiveServerComponents();
+            builder.Services.AddHttpContextAccessor();
 
             // Raise the form/file-upload limits. Torrent files for large 1G1R sets can be
             // several MB, so allow generous per-file and total sizes.
