@@ -102,6 +102,10 @@
         // document.cookie is a property, not a function, so use eval to assign it.
         await JS.InvokeVoidAsync("localStorage.setItem", "sdt_darkmode", cookieValue);
         await JS.InvokeVoidAsync("eval", $"document.cookie = 'sdt_darkmode={cookieValue}; path=/; max-age=31536000'");
+
+        // Keep the <html> background in sync so the old colour doesn't stay stuck behind
+        // the page when toggling (the pre-paint script only runs once on load).
+        await JS.InvokeVoidAsync("eval", $"document.documentElement.style.backgroundColor = '{(_isDarkMode ? "#1E1E1E" : "#F3F4F6")}'");
     }
 
     public void Dispose()

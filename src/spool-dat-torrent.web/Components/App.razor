@@ -16,13 +16,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@500&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
     <script>
-        // Apply the saved dark-mode background BEFORE the page paints to avoid a
-        // light-mode flash. MudBlazor's theme takes over once it initialises.
+        // Apply the saved theme background BEFORE the page paints to avoid a light-mode
+        // flash. Set the correct colour for BOTH modes so switching back to light clears
+        // the dark background. MudBlazor's theme takes over once it initialises.
         (function () {
             try {
-                if (localStorage.getItem('sdt_darkmode') === 'True') {
-                    document.documentElement.style.backgroundColor = '#1E1E1E';
-                }
+                var dark = localStorage.getItem('sdt_darkmode') === 'True';
+                document.documentElement.style.backgroundColor = dark ? '#1E1E1E' : '#F3F4F6';
             } catch (e) { /* ignore */ }
         })();
     </script>
