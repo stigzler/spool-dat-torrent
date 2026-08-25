@@ -2,6 +2,28 @@ html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 }
 
+/* Sharpen MudBlazor icons (nav drawer + app bar), which render from the Material
+   icon font/SVG and can look aliased at small sizes. */
+.mud-nav-link .mud-icon-root,
+.mud-icon-root {
+    shape-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* Nav-drawer icons: bump to a larger, whole-number size and keep stroke edges crisp so
+   round/filled icons (e.g. the Info circle) don't rasterize with jagged edges. */
+.mud-nav-link .mud-icon-root {
+    width: 28px;
+    height: 28px;
+    font-size: 28px;
+}
+.mud-nav-link .mud-icon-root path,
+.mud-nav-link .mud-icon-root svg {
+    shape-rendering: geometricPrecision;
+}
+
 h1, h2, h3, h4, h5, h6 {
     font-family: 'Rubik', sans-serif;
     font-weight: 500;

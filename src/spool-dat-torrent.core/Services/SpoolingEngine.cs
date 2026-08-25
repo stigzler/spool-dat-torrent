@@ -576,7 +576,12 @@ namespace SpoolDatTorrent.Core.Services
             {
                 LogStatus($"Halting torrent to move {readyToMove.Count} completed files...");
                 await torrentClient.PauseTorrentAsync(stream.TorrentIdentifier, cancellationToken);
-                await Task.Delay(1000, cancellationToken);
+
+                // Wait for the client to finish writing/flushing the completed files before
+                // copying them. Uses the stream's per-stream settling time, falling back to
+                // the global default.
+                int settleSeconds = stream.SettlingTimeSeconds ?? _settings.SettlingTimeSeconds;
+                await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, settleSeconds)), cancellationToken);
 
                 var copiedIndices = new List<int>();
                 bool corruptSourceDetected = false;
@@ -791,6 +796,46 @@ namespace SpoolDatTorrent.Core.Services
             return torrentName;
         }
 
+        /// <summary>
+        /// Rank a file's download priority based on the stream's comma-separated terms.
+        /// 0 = matches a priority term (download first), 2 = matches a de-priority term
+        /// (download last), 1 = neutral. Substring match, case-insensitive.
+        /// </summary>
+        private static int GetPriorityRank(string fileName, string priorityTerms, string dePriorityTerms)
+        {
+            if (MatchesAnyTerm(fileName, priorityTerms))
+            {
+                return 0;
+            }
+
+            if (MatchesAnyTerm(fileName, dePriorityTerms))
+            {
+                return 2;
+            }
+
+            return 1;
+        }
+
+        private static bool MatchesAnyTerm(string fileName, string csvTerms)
+        {
+            if (string.IsNullOrWhiteSpace(csvTerms))
+            {
+                return false;
+            }
+
+            var name = fileName;
+            foreach (var raw in csvTerms.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!string.IsNullOrWhiteSpace(raw) &&
+                    name.Contains(raw, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private long ApplySafetyMargin(long capBytes)
         {
             // Reserve a percentage of the cap for BitTorrent "boundary piece" overhead.
@@ -833,7 +878,18 @@ namespace SpoolDatTorrent.Core.Services
             var filesToDownload = new List<int>();
             var filesToSkip = new List<int>();
 
-            foreach (var file in torrentFiles)
+            // Order the whole desired set once by the stream's priority/de-priority terms.
+            // High-priority files come first, de-priority files last, so batches fill the
+            // high-priority ROMs first across the entire run (not just within one batch).
+            var orderedFiles = torrentFiles
+                .OrderBy(f => GetPriorityRank(f.Name, stream.PriorityTerms, stream.DePriorityTerms))
+                .ThenBy(f => f.Index)
+                .ToList();
+
+            // Determine which files are candidates for this batch (DAT-matched, not yet
+            // moved, not already selected/skipped).
+            var candidates = new List<(TorrentFileDto File, int Rank)>();
+            foreach (var file in orderedFiles)
             {
                 if (alreadyMoved.Any(f => f.Index == file.Index))
                 {
@@ -849,12 +905,55 @@ namespace SpoolDatTorrent.Core.Services
                     continue;
                 }
 
+                candidates.Add((file, GetPriorityRank(file.Name, stream.PriorityTerms, stream.DePriorityTerms)));
+            }
+
+            // Build the batch from two pools:
+            //  - High-priority pool: ranks 0 (priority) + 1 (neutral), mixed together
+            //    (priority files come first, neutral tops up the batch).
+            //  - De-priority pool: rank 2 (de-priority) only.
+            // Fill the high-priority pool first; de-priority files are only downloaded once
+            // no high-priority file remains. De-priority never mixes with priority.
+            var orderedCandidates = candidates.OrderBy(c => c.Rank).ToList();
+            var highPriorityPool = orderedCandidates.Where(c => c.Rank <= 1).Select(c => c.File).ToList();
+            var dePriorityPool = orderedCandidates.Where(c => c.Rank == 2).Select(c => c.File).ToList();
+
+            List<TorrentFileDto> selectedPool;
+            if (highPriorityPool.Any(f => f.Size <= allocatedCapBytes - currentFootprint))
+            {
+                selectedPool = highPriorityPool;
+            }
+            else if (dePriorityPool.Any(f => f.Size <= allocatedCapBytes - currentFootprint))
+            {
+                selectedPool = dePriorityPool;
+            }
+            else
+            {
+                // No file fits the remaining cap; fall back to the high-priority pool so
+                // its files are at least marked (they'll be skipped below if oversized).
+                selectedPool = highPriorityPool;
+            }
+
+            // Fill the batch from the selected pool, respecting the cap.
+            foreach (var file in selectedPool)
+            {
                 if (currentFootprint + file.Size <= allocatedCapBytes)
                 {
                     filesToDownload.Add(file.Index);
                     currentFootprint += file.Size;
                 }
                 else
+                {
+                    filesToSkip.Add(file.Index);
+                }
+            }
+
+            // CRITICAL: every candidate NOT selected for download must be skipped (priority 0).
+            // Otherwise lower-tier files (e.g. Japan) keep their previous priority and
+            // download alongside, which balloons the batch beyond the cap.
+            foreach (var (file, _) in candidates)
+            {
+                if (!filesToDownload.Contains(file.Index))
                 {
                     filesToSkip.Add(file.Index);
                 }

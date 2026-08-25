@@ -1,6 +1,7 @@
 ﻿@using MudBlazor
 @using Microsoft.AspNetCore.Http
 @using Microsoft.AspNetCore.Components.Web
+@using SpoolDatTorrent.Core.Progress
 @inherits LayoutComponentBase
 @implements IDisposable
 
@@ -14,6 +15,18 @@
         <MudImage Src="/icon-128px.png" Alt="SpoolDatTorrent Icon" Height="48" Class="ml-3 mr-2" Style="object-fit: contain;" />
         <MudText Typo="Typo.h6" Style="font-family: 'Rubik', sans-serif; font-weight: 500;">SpoolDatTorrent</MudText>
         <MudSpacer />
+        @if (_hasStreams)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                     Color="@(_activeCount > 0 ? Color.Success : Color.Default)"
+                     Style="flex-shrink: 0;">
+                @_activeCount/@_totalCount active
+            </MudChip>
+        }
+        <MudIconButton Icon="@(_pauseService.IsPaused ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.Pause)"
+                       Color="Color.Inherit"
+                       OnClick="ToggleGlobalPause"
+                       Title="@(_pauseService.IsPaused ? "Resume all streams" : "Pause all streams")" />
         <MudSwitch T="bool" @bind-Value="_isDarkMode" @bind-Value:after="() => ToggleDarkMode(_isDarkMode)"
                    Color="Color.Primary"
                    Label="@(_isDarkMode ? "Dark" : "Light")"
@@ -25,7 +38,6 @@
         <MudNavMenu>
             <MudNavLink Href="streams" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">Streams</MudNavLink>
             <MudNavLink Href="clients" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dns">Servers</MudNavLink>
-            <MudNavLink Href="spool" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.PlayCircle">Spool / Pause</MudNavLink>
             <MudNavLink Href="about" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Info">About</MudNavLink>
             <MudNavLink Href="settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
         </MudNavMenu>
@@ -51,8 +63,31 @@
     [Inject]
     private PersistentComponentState PersistentState { get; set; } = default!;
 
+    [Inject]
+    private GlobalPauseService _pauseService { get; set; } = default!;
+
+    [Inject]
+    private InMemoryProgressStore _progressStore { get; set; } = default!;
+
     private bool _isDarkMode;
     private PersistingComponentStateSubscription _subscription;
+    private Timer? _pollTimer;
+    private int _activeCount;
+    private int _totalCount;
+    private bool _hasStreams;
+
+    private async Task ToggleGlobalPause()
+    {
+        if (_pauseService.IsPaused)
+        {
+            await _pauseService.ResumeAllAsync();
+        }
+        else
+        {
+            await _pauseService.PauseAllAsync();
+        }
+        StateHasChanged();
+    }
 
     protected override void OnInitialized()
     {
@@ -74,6 +109,29 @@
                 _isDarkMode = dark;
             }
         }
+
+        // Poll the live progress store to keep the active-stream count indicator fresh.
+        StartPolling();
+    }
+
+    private void StartPolling()
+    {
+        var intervalMs = 2000;
+        _pollTimer = new Timer(async _ =>
+        {
+            try
+            {
+                var streams = _progressStore.GetStreams();
+                _totalCount = streams.Count;
+                _activeCount = streams.Count(s => s.Status == "Active");
+                _hasStreams = _totalCount > 0;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch
+            {
+                // Ignore poll errors; next tick retries.
+            }
+        }, null, intervalMs, intervalMs);
     }
 
     private Task PersistDarkMode()
@@ -110,6 +168,7 @@
 
     public void Dispose()
     {
+        _pollTimer?.Dispose();
         _subscription.Dispose();
     }
 

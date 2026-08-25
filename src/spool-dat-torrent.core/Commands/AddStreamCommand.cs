@@ -44,6 +44,9 @@ namespace SpoolDatTorrent.Core.Commands
             string? originalDatPath = null,
             string? filter = null,
             SpoolingStrategy? strategy = null,
+            int? settlingTimeSeconds = null,
+            string? priorityTerms = null,
+            string? dePriorityTerms = null,
             CancellationToken cancellationToken = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -76,6 +79,9 @@ namespace SpoolDatTorrent.Core.Commands
                 existing.Status = StreamLifecycleStatus.Active;
                 if (!string.IsNullOrWhiteSpace(filter)) existing.FileFilter = filter;
                 if (strategy.HasValue) existing.Strategy = strategy.Value;
+                if (settlingTimeSeconds.HasValue) existing.SettlingTimeSeconds = settlingTimeSeconds.Value;
+                if (!string.IsNullOrWhiteSpace(priorityTerms)) existing.PriorityTerms = priorityTerms;
+                if (!string.IsNullOrWhiteSpace(dePriorityTerms)) existing.DePriorityTerms = dePriorityTerms;
 
                 await db.SaveChangesAsync(cancellationToken);
                 return existing;
@@ -106,7 +112,10 @@ namespace SpoolDatTorrent.Core.Commands
                 CachedTorrentPath = cacheResult.CachedTorrentPath,
                 CachedDatPath = cacheResult.CachedDatPath,
                 FileFilter = string.IsNullOrWhiteSpace(filter) ? "*.*" : filter,
-                Strategy = strategy ?? SpoolingStrategy.MoveFiles
+                Strategy = strategy ?? SpoolingStrategy.MoveFiles,
+                SettlingTimeSeconds = settlingTimeSeconds,
+                PriorityTerms = priorityTerms ?? string.Empty,
+                DePriorityTerms = dePriorityTerms ?? string.Empty
             };
 
             db.Streams.Add(stream);

@@ -26,6 +26,25 @@ namespace SpoolDatTorrent.Core.Models
         public string? SpoolingTargetOverride { get; set; }
         public SpoolingStrategy Strategy { get; set; } = SpoolingStrategy.MoveFiles;
         public string FileFilter { get; set; } = "*.*";
+
+        /// <summary>
+        /// Per-stream override for the settling time (seconds) — how long to wait after
+        /// pausing a torrent before moving its completed files. Null falls back to the
+        /// global default (<see cref="GlobalSpoolSettings.SettlingTimeSeconds"/>).
+        /// </summary>
+        public int? SettlingTimeSeconds { get; set; }
+
+        /// <summary>
+        /// Comma-separated filename substrings to download FIRST (e.g. "(USA),(Europe),(World)").
+        /// Empty = no prioritisation.
+        /// </summary>
+        public string PriorityTerms { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Comma-separated filename substrings to download LAST (e.g. "(Japan),(China)").
+        /// Empty = no de-prioritisation.
+        /// </summary>
+        public string DePriorityTerms { get; set; } = string.Empty;
         public StreamLifecycleStatus Status { get; set; } = StreamLifecycleStatus.Active;
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
         public List<TorrentFileItem> Files { get; set; } = new();

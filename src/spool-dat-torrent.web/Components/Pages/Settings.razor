@@ -43,7 +43,7 @@
             <MudNumericField @bind-Value="_settlingTimeSeconds"
                              @bind-Value:after="ScheduleSave"
                              Label="Settling Time (seconds)"
-                             HelperText="Time to wait after pausing before moving files, so the client finishes writing. Whole number between 1 and 480."
+                             HelperText="Global default: how long to wait after pausing a stream's torrent before moving its completed files (lets the client finish writing). Larger files may need more time. Whole number between 1 and 480. A stream can override this per-stream when it is added."
                              Variant="Variant.Outlined" FullWidth="true"
                              Min="1" Max="480"
                              Class="sdt-numeric" />
@@ -65,13 +65,6 @@
                              Variant="Variant.Outlined" FullWidth="true"
                              Min="0" Max="20"
                              Class="sdt-numeric" />
-        </MudItem>
-        <MudItem xs="12" md="6">
-            <MudTextField @bind-Value="_settings.CacheDirectory"
-                          @bind-Value:after="ScheduleSave"
-                          Label="Cache Directory"
-                          HelperText="Where per-stream copies of the .torrent and .dat files are stored. Leave blank for the default."
-                          Variant="Variant.Outlined" FullWidth="true" />
         </MudItem>
         <MudItem xs="12" md="6">
             <MudTextField @bind-Value="_settings.AdminPassword"

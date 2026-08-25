@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SpoolDatTorrent.Core.Data;
 
@@ -10,9 +11,11 @@ using SpoolDatTorrent.Core.Data;
 namespace SpoolDatTorrent.Core.Data.Migrations
 {
     [DbContext(typeof(SpoolDbContext))]
-    partial class SpoolDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260825210510_AddStreamSettlingTime")]
+    partial class AddStreamSettlingTime
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
@@ -75,10 +78,6 @@ namespace SpoolDatTorrent.Core.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("DePriorityTerms")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("FileFilter")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -97,10 +96,6 @@ namespace SpoolDatTorrent.Core.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OriginalTorrentPath")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PriorityTerms")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ServerProfileId")

@@ -16,6 +16,12 @@ namespace SpoolDatTorrent.Core.DTOs
         public string Status { get; set; } = string.Empty;
         public System.DateTime CreatedUtc { get; set; }
 
+        /// <summary>Comma-separated filename substrings to download first.</summary>
+        public string PriorityTerms { get; set; } = string.Empty;
+
+        /// <summary>Comma-separated filename substrings to download last.</summary>
+        public string DePriorityTerms { get; set; } = string.Empty;
+
         /// <summary>Number of desired (DAT-matched) files already moved to the destination.</summary>
         public int MovedCount { get; set; }
 

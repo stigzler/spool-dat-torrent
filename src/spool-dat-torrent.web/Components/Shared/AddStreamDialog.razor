@@ -3,10 +3,25 @@
 <MudDialog>
     <DialogContent>
         <MudStack Spacing="3">
-            <MudTextField @bind-Value="_name"
-                          Label="Name (optional)"
-                          HelperText="A friendly display name. Defaults to the uploaded torrent's filename."
+
+            <MudText Typo="Typo.subtitle2">Torrent</MudText>
+
+            <InputFile OnChange="OnTorrentFileChanged" Color="Color.Primary" Accept=".torrent" />
+            @if (_torrentFile != null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">@_torrentFile.Name</MudAlert>
+            }
+            <MudTextField @bind-Value="_magnet"
+                          Label="Or paste a magnet link / info-hash"
+                          HelperText="Leave blank if uploading a .torrent file."
                           Variant="Variant.Outlined" FullWidth="true" />
+
+            <MudText Typo="Typo.subtitle2">DAT File</MudText>
+            <InputFile OnChange="OnDatFileChanged" Accept=".dat" />
+            @if (_datFile != null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true">@_datFile.Name</MudAlert>
+            }
 
             <MudSelect T="string" @bind-Value="_server"
                        Label="Server Profile"
@@ -18,14 +33,6 @@
                 }
             </MudSelect>
 
-            <MudTextField @bind-Value="_target"
-                          Label="Destination folder (this stream, optional)"
-                          HelperText="A real folder path where completed files for this stream are moved to. Leave blank to use the global default (set in Settings). Example: C:\Spooled\psx or /mnt/pool/Media/Games/roms/psx."
-                          Variant="Variant.Outlined" FullWidth="true" />
-            <MudTextField @bind-Value="_filter"
-                          Label="File Filter (optional)"
-                          HelperText="File matching pattern, e.g. *USA*. Defaults to *.*."
-                          Variant="Variant.Outlined" FullWidth="true" />
             <MudSelect T="string" @bind-Value="_strategy"
                        Label="Strategy"
                        Variant="Variant.Outlined" FullWidth="true">
@@ -35,23 +42,41 @@
             </MudSelect>
 
             <MudDivider />
-            <MudText Typo="Typo.subtitle2">Torrent</MudText>
-            <MudTextField @bind-Value="_magnet"
-                          Label="Or paste a magnet link / info-hash"
-                          HelperText="Leave blank if uploading a .torrent file."
-                          Variant="Variant.Outlined" FullWidth="true" />
-            <InputFile OnChange="OnTorrentFileChanged" Accept=".torrent" />
-            @if (_torrentFile != null)
-            {
-                <MudAlert Severity="Severity.Info" Dense="true">@_torrentFile.Name</MudAlert>
-            }
 
-            <MudText Typo="Typo.subtitle2">DAT File</MudText>
-            <InputFile OnChange="OnDatFileChanged" Accept=".dat" />
-            @if (_datFile != null)
-            {
-                <MudAlert Severity="Severity.Info" Dense="true">@_datFile.Name</MudAlert>
-            }
+            <MudTextField @bind-Value="_name"
+                          Label="Name (optional)"
+                          HelperText="A friendly display name. Defaults to the uploaded torrent's filename."
+                          Variant="Variant.Outlined" FullWidth="true" />
+
+
+
+            <MudTextField @bind-Value="_target"
+                          Label="Destination folder (this stream, optional)"
+                          HelperText="A real folder path where completed files for this stream are moved to. Leave blank to use the global default (set in Settings). Example: C:\Spooled\psx or /mnt/pool/Media/Games/roms/psx."
+                          Variant="Variant.Outlined" FullWidth="true" />
+            <MudTextField @bind-Value="_filter"
+                          Label="File Filter (optional)"
+                          HelperText="File matching pattern, e.g. *USA*. Defaults to *.*."
+                          Variant="Variant.Outlined" FullWidth="true" />
+
+
+            <MudNumericField @bind-Value="_settlingTimeSeconds"
+                             Label="Settling Time (seconds, optional)"
+                             HelperText="How long to wait after pausing this stream's torrent before moving its completed files (lets the client finish writing). Leave blank to use the global default."
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="1" Max="480" />
+
+            <MudTextField @bind-Value="_priorityTerms"
+                          Label="Priority Terms (optional)"
+                          HelperText="Download first, e.g. (USA),(Europe),(World). Slows performance."
+                          Variant="Variant.Outlined" FullWidth="true" />
+            <MudTextField @bind-Value="_dePriorityTerms"
+                          Label="De-priority Terms (optional)"
+                          HelperText="Download last, e.g. (Japan),(China). Slows performance."
+                          Variant="Variant.Outlined" FullWidth="true" />
+
+       
+
         </MudStack>
     </DialogContent>
     <DialogActions>
@@ -72,6 +97,9 @@
     private string _filter = string.Empty;
     private string _strategy = SpoolingStrategy.MoveFiles.ToString();
     private string _magnet = string.Empty;
+    private int? _settlingTimeSeconds;
+    private string _priorityTerms = string.Empty;
+    private string _dePriorityTerms = string.Empty;
 
     protected override void OnInitialized()
     {
@@ -132,6 +160,9 @@
                 Target = string.IsNullOrWhiteSpace(_target) ? null : _target.Trim(),
                 Filter = string.IsNullOrWhiteSpace(_filter) ? null : _filter.Trim(),
                 Strategy = _strategy,
+                SettlingTimeSeconds = _settlingTimeSeconds,
+                PriorityTerms = string.IsNullOrWhiteSpace(_priorityTerms) ? null : _priorityTerms.Trim(),
+                DePriorityTerms = string.IsNullOrWhiteSpace(_dePriorityTerms) ? null : _dePriorityTerms.Trim(),
                 TorrentFilePath = torrentPath,
                 OriginalTorrentName = _torrentFile?.Name,
                 DatFilePath = datPath,

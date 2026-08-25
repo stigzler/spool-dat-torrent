@@ -66,6 +66,9 @@ namespace SpoolDatTorrent.Web
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.SetStreamStatusCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.RetryStreamCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.ListStreamsCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.PauseAllStreamsCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.ResumeAllStreamsCommand>();
+            builder.Services.AddSingleton<GlobalPauseService>();
 
             // Cookie authentication (single admin).
             builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

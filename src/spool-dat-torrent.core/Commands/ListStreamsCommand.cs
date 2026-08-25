@@ -50,6 +50,8 @@ namespace SpoolDatTorrent.Core.Commands
                     ServerProfileId = s.ServerProfileId,
                     Status = s.Status.ToString(),
                     CreatedUtc = s.CreatedUtc,
+                    PriorityTerms = s.PriorityTerms,
+                    DePriorityTerms = s.DePriorityTerms,
                     MovedCount = s.MovedCount,
                     TotalCount = s.TotalCount
                 })

@@ -163,7 +163,10 @@ else
                 originalMagnet: form.Magnet,
                 originalDatPath: form.OriginalDatName,
                 filter: form.Filter,
-                strategy: strategy);
+                strategy: strategy,
+                settlingTimeSeconds: form.SettlingTimeSeconds,
+                priorityTerms: form.PriorityTerms,
+                dePriorityTerms: form.DePriorityTerms);
 
             Snackbar.Add($"Stream '{stream.Name}' added.", Severity.Success);
             await LoadStreamsAsync();

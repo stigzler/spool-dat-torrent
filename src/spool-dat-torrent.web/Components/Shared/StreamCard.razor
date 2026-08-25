@@ -39,7 +39,22 @@
                 }
             </div>
         </div>
-        <MudText Typo="Typo.body2" Style="opacity: 0.8;">@DatName</MudText>
+        <div class="d-flex align-items-center" style="gap: 8px; min-width: 0;">
+            <MudText Typo="Typo.body2" Style="opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@DatName</MudText>
+            @if (HasPriorityTerms || HasDePriorityTerms)
+            {
+                <div class="d-flex align-items-center" style="flex-shrink: 0; gap: 4px;">
+                    @foreach (var term in PriorityTermList)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined" Style="white-space: nowrap;">@($"↑ {term}")</MudChip>
+                    }
+                    @foreach (var term in DePriorityTermList)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined" Style="white-space: nowrap;">@($"↓ {term}")</MudChip>
+                    }
+                </div>
+            }
+        </div>
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
             <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="text-secondary" />
             <MudText Typo="Typo.caption" Class="text-secondary" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -109,10 +124,10 @@
                     {
                         <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" Style="flex-shrink: 0; white-space: nowrap; width: 110px; justify-content: center;">@ClientState</MudChip>
                     }
-                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: left;">Seeds: @ClientSeedsText</div>
-                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: left;">Peers: @ClientPeersText</div>
-                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 120px; text-align: left;">ETA: @ClientEtaText</div>
-                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; text-align: left;">Speed: @ClientSpeedText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: center;">Seeds: @ClientSeedsText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: center;">Peers: @ClientPeersText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 120px; text-align: center;">ETA: @ClientEtaText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; text-align: center;">Speed: @ClientSpeedText</div>
                 </div>
             }
             <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
@@ -175,6 +190,20 @@
     private int TotalCount => Live?.TotalCount ?? Stream.TotalCount;
 
     private double ProgressPercent => TotalCount == 0 ? 0 : (double)MovedCount / TotalCount * 100;
+
+    private bool HasPriorityTerms => !string.IsNullOrWhiteSpace(Stream.PriorityTerms);
+    private bool HasDePriorityTerms => !string.IsNullOrWhiteSpace(Stream.DePriorityTerms);
+
+    private IReadOnlyList<string> PriorityTermList =>
+        SplitTerms(Stream.PriorityTerms);
+
+    private IReadOnlyList<string> DePriorityTermList =>
+        SplitTerms(Stream.DePriorityTerms);
+
+    private static IReadOnlyList<string> SplitTerms(string csv) =>
+        string.IsNullOrWhiteSpace(csv)
+            ? Array.Empty<string>()
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     private string OverallSizeText
     {
