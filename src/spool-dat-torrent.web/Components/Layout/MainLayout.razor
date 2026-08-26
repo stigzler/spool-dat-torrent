@@ -15,6 +15,16 @@
         <MudImage Src="/icon-128px.png" Alt="SpoolDatTorrent Icon" Height="48" Class="ml-3 mr-2" Style="object-fit: contain;" />
         <MudText Typo="Typo.h6" Style="font-family: 'Rubik', sans-serif; font-weight: 500;">SpoolDatTorrent</MudText>
         <MudSpacer />
+        <div class="sdt-pause-wrap" style="margin-right: 12px;">
+            @if (_activeCount > 0)
+            {
+                <span class="sdt-pause-ring"></span>
+            }
+            <MudIconButton Icon="@(_pauseService.IsPaused ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.Pause)"
+                           Color="Color.Inherit"
+                           OnClick="ToggleGlobalPause"
+                           Title="@(_pauseService.IsPaused ? "Resume all streams" : "Pause all streams")" />
+        </div>
         @if (_hasStreams)
         {
             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
@@ -23,10 +33,7 @@
                 @_activeCount/@_totalCount active
             </MudChip>
         }
-        <MudIconButton Icon="@(_pauseService.IsPaused ? Icons.Material.Filled.PlayArrow : Icons.Material.Filled.Pause)"
-                       Color="Color.Inherit"
-                       OnClick="ToggleGlobalPause"
-                       Title="@(_pauseService.IsPaused ? "Resume all streams" : "Pause all streams")" />
+
         <MudSwitch T="bool" @bind-Value="_isDarkMode" @bind-Value:after="() => ToggleDarkMode(_isDarkMode)"
                    Color="Color.Primary"
                    Label="@(_isDarkMode ? "Dark" : "Light")"
@@ -38,8 +45,8 @@
         <MudNavMenu>
             <MudNavLink Href="streams" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">Streams</MudNavLink>
             <MudNavLink Href="clients" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dns">Servers</MudNavLink>
-            <MudNavLink Href="about" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Info">About</MudNavLink>
             <MudNavLink Href="settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">Settings</MudNavLink>
+            <MudNavLink Href="about" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Info">About</MudNavLink>
         </MudNavMenu>
     </MudDrawer>
 
@@ -69,6 +76,9 @@
     [Inject]
     private InMemoryProgressStore _progressStore { get; set; } = default!;
 
+    [Inject]
+    private ISnackbar Snackbar { get; set; } = default!;
+
     private bool _isDarkMode;
     private PersistingComponentStateSubscription _subscription;
     private Timer? _pollTimer;
@@ -78,13 +88,24 @@
 
     private async Task ToggleGlobalPause()
     {
-        if (_pauseService.IsPaused)
+        try
         {
-            await _pauseService.ResumeAllAsync();
+            if (_pauseService.IsPaused)
+            {
+                await _pauseService.ResumeAllAsync();
+                Snackbar.Add("Resumed all streams.", Severity.Success);
+            }
+            else
+            {
+                await _pauseService.PauseAllAsync();
+                Snackbar.Add("Paused all streams.", Severity.Success);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            await _pauseService.PauseAllAsync();
+            // Surface the error so it's not silently swallowed.
+            Snackbar.Add($"Global pause failed: {ex.Message}", Severity.Error);
+            Console.WriteLine($"[GlobalPause] {ex}");
         }
         StateHasChanged();
     }
@@ -147,6 +168,11 @@
             // Also keep localStorage in sync (used by the pre-paint background script in
             // App.razor and as a fallback).
             await JS.InvokeVoidAsync("localStorage.setItem", "sdt_darkmode", _isDarkMode.ToString());
+
+            // Load the persisted global-pause state so the button shows the correct icon
+            // after a restart.
+            await _pauseService.InitializeAsync();
+            StateHasChanged();
         }
     }
 

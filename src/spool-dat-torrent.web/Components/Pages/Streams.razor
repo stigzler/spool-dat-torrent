@@ -1,4 +1,5 @@
 @implements IDisposable
+@attribute [Authorize]
 @page "/"
 @page "/streams"
 @using SpoolDatTorrent.Core.Commands
@@ -16,26 +17,14 @@
 @inject AddStreamCommand AddStreamCommand
 @inject InMemoryProgressStore ProgressStore
 @inject GlobalSpoolSettings Settings
+@inject GlobalPauseService PauseService
 
-<PageTitle>Streams</PageTitle>
+<PageTitle>SpoolDatTorrent</PageTitle>
 
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h1 class="mb-0">Streams</h1>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenAddDialogAsync">Add Stream</MudButton>
 </div>
-
-<MudExpansionPanels MultiExpansion="false" Class="mb-4">
-    <MudExpansionPanel Text="Where do my files go?" Icon="@Icons.Material.Filled.HelpOutline" MaxHeight="280">
-        <MudStack Spacing="2" Class="px-3 pb-3">
-            <MudText><b>Destination folder</b> is a real path on the machine running SpoolDatTorrent — not a virtual or browser path.</MudText>
-            <MudText>Each card shows where that stream's completed files are moved to. If it has a <b>custom</b> destination, that path is used. Otherwise files go into <code>[Default destination folder]\[torrent name]</code>.</MudText>
-            <MudText><b>Desktop install (this app + qBittorrent on the same machine):</b> use a normal Windows path, e.g. <code>C:\Spooled Output</code>. No path mapping is needed.</MudText>
-            <MudText><b>Linux server:</b> use a real path, e.g. <code>/mnt/pool/Media/Games/roms/unsorted</code>.</MudText>
-            <MudText><b>Docker:</b> the "Docker path mapping" on each server profile is only needed if qBittorrent and SpoolDatTorrent see the same disk at different paths. If you mount the same folder at the same path in both containers, leave it blank.</MudText>
-            <MudText>To change where files go, edit <b>Default destination folder</b> in Settings, or set a per-stream destination when adding a stream.</MudText>
-        </MudStack>
-    </MudExpansionPanel>
-</MudExpansionPanels>
 
 @if (_loading)
 {
@@ -44,7 +33,7 @@
 else if (_streams.Count == 0)
 {
     <MudAlert Severity="Severity.Info">
-        No streams yet. Use "Add Stream" above to start spooling 1G1R ROM sets from a torrent.
+        No streams yet. Use "Add Stream" above to add a torrent + dat.
     </MudAlert>
 }
 else
@@ -54,6 +43,7 @@ else
         var live = _liveSnapshots.FirstOrDefault(s => s.TorrentIdentifier == stream.TorrentIdentifier);
         <StreamCard Stream="stream"
                     Live="live"
+                    GlobalPaused="@_globalPaused"
                     OnStatusChange="() => HandleStatusActionAsync(stream)"
                     OnCancel="() => ConfirmAndCancelAsync(stream)"
                     OnRemove="() => ConfirmAndRemoveAsync(stream)" />
@@ -64,6 +54,7 @@ else
     private List<StreamDetails> _streams = new();
     private List<StreamProgressInfo> _liveSnapshots = new();
     private bool _loading = true;
+    private bool _globalPaused;
     private Timer? _pollTimer;
 
     protected override async Task OnInitializedAsync()
@@ -94,6 +85,7 @@ else
             try
             {
                 _liveSnapshots = ProgressStore.GetStreams().ToList();
+                _globalPaused = PauseService.IsPaused;
                 await InvokeAsync(StateHasChanged);
             }
             catch
@@ -192,7 +184,13 @@ else
 
             if (ok)
             {
-                Snackbar.Add("Stream updated.", Severity.Success);
+                // Reflect the new status in the live snapshots so the card updates immediately.
+                ProgressStore.UpdateStatus(stream.Id, stream.Status switch
+                {
+                    "Active" => "Paused",
+                    "Paused" => "Active",
+                    _ => stream.Status
+                });
                 await LoadStreamsAsync();
             }
             else
@@ -208,7 +206,7 @@ else
 
     private async Task ConfirmAndCancelAsync(StreamDetails stream)
     {
-        var proceed = await ConfirmDeleteAsync(stream, "Cancel", "Cancel stream");
+        var proceed = await ConfirmDeleteAsync(stream, "Cancel Stream", "Cancel stream");
         if (!proceed.Confirmed)
         {
             return;
@@ -284,11 +282,11 @@ else
 
         var parameters = new DialogParameters
         {
-            { "ContentText", $"Cancel stream '{stream.Name}'? This cannot be undone." },
+            { "ContentText", $"Cancel this stream?\n\n{stream.Name}\n\nThis cannot be undone and will remove it from the Streams list. Any downloaded files will not be affected and future runs for this torrent will detect these, avoiding re-downloading." },
             { "ConfirmLabel", confirmLabel }
         };
 
-        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialog = await DialogService.ShowAsync<StreamDeleteConfirmDialog>(title, parameters, options);
         var result = await dialog.Result;
 

@@ -9,9 +9,9 @@ using SpoolDatTorrent.Core.Models;
 namespace SpoolDatTorrent.Core.Commands
 {
     /// <summary>
-    /// Resumes (re-activates) a specific set of stream IDs — those that were Active when a
-    /// global "Pause All" was triggered. Streams that were already Paused/Completed are
-    /// deliberately not included. Reusable by the CLI, Docker web UI, and desktop apps.
+    /// Resumes (re-activates) all streams that were paused by the global "Pause All" action
+    /// (PausedByGlobal == true), and clears the flag. Streams paused manually or completed
+    /// are left untouched. Persisted in the DB so this survives an app restart.
     /// </summary>
     public class ResumeAllStreamsCommand
     {
@@ -22,29 +22,27 @@ namespace SpoolDatTorrent.Core.Commands
             _scopeFactory = scopeFactory;
         }
 
-        /// <summary>Set the given stream IDs back to Active.</summary>
-        public async Task ExecuteAsync(IEnumerable<int> streamIds, CancellationToken cancellationToken = default)
+        /// <summary>Resume all streams paused by the global pause. Returns the resumed IDs.</summary>
+        public async Task<List<int>> ExecuteAsync(CancellationToken cancellationToken = default)
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
             await db.Database.MigrateAsync(cancellationToken);
 
-            var ids = new HashSet<int>(streamIds);
-            if (ids.Count == 0)
-            {
-                return;
-            }
-
             var streams = await db.Streams
-                .Where(s => ids.Contains(s.Id))
+                .Where(s => s.PausedByGlobal)
                 .ToListAsync(cancellationToken);
 
+            var ids = new List<int>();
             foreach (var stream in streams)
             {
                 stream.Status = StreamLifecycleStatus.Active;
+                stream.PausedByGlobal = false;
+                ids.Add(stream.Id);
             }
 
             await db.SaveChangesAsync(cancellationToken);
+            return ids;
         }
     }
 }

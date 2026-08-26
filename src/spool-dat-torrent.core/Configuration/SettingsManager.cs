@@ -58,20 +58,73 @@ namespace SpoolDatTorrent.Core.Configuration
             if (File.Exists(settingsPath))
             {
                 var json = File.ReadAllText(settingsPath);
-                return JsonSerializer.Deserialize<GlobalSpoolSettings>(json) ?? CreateDefaultSettings();
+                var settings = JsonSerializer.Deserialize<GlobalSpoolSettings>(json) ?? CreateDefaultSettings();
+                DecryptSecrets(settings);
+                return settings;
             }
 
             var defaults = CreateDefaultSettings();
+            ApplyEnvironmentOverrides(defaults);
             SaveSettings(defaults);
             return defaults;
         }
 
-        /// <summary>Persist settings to config.json.</summary>
+        /// <summary>
+        /// Apply first-boot environment overrides onto a fresh default settings object.
+        /// Only runs when config.json is missing, so it never clobbers a user's saved
+        /// values. Supports the Docker compose UX where the container-side mount path
+        /// is chosen by the user and must become the default destination folder.
+        /// </summary>
+        private static void ApplyEnvironmentOverrides(GlobalSpoolSettings settings)
+        {
+            // SDT_SPOOL_DIR: the container-side path the user mounted for the final
+            // 1G1R output (e.g. "/dest-dir"). Seeds DefaultSpoolingTarget so the user
+            // doesn't have to type it into the web UI Settings page.
+            var spoolDir = Environment.GetEnvironmentVariable("SDT_SPOOL_DIR");
+            if (!string.IsNullOrWhiteSpace(spoolDir))
+            {
+                settings.DefaultSpoolingTarget = spoolDir.Trim().TrimEnd('/');
+            }
+        }
+
+        /// <summary>Persist settings to config.json. Secrets are encrypted before writing.</summary>
         public static void SaveSettings(GlobalSpoolSettings settings)
         {
             string settingsPath = GetSettingsPath();
             var options = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, options));
+
+            // Serialize a deep copy with encrypted secrets so the in-memory object keeps
+            // plaintext (the UI/engine read it) and isn't double-encrypted on the next save.
+            var copy = JsonSerializer.Deserialize<GlobalSpoolSettings>(JsonSerializer.Serialize(settings));
+            if (copy != null)
+            {
+                EncryptSecrets(copy);
+                File.WriteAllText(settingsPath, JsonSerializer.Serialize(copy, options));
+            }
+        }
+
+        private static readonly ISecretProtector _protector = new AesSecretProtector();
+
+        /// <summary>Encrypt the secret fields of every server profile before serializing.</summary>
+        private static void EncryptSecrets(GlobalSpoolSettings settings)
+        {
+            foreach (var profile in settings.TorrentServers.Values)
+            {
+                profile.Username = _protector.Protect(profile.Username);
+                profile.Password = _protector.Protect(profile.Password);
+                profile.ApiKey = _protector.Protect(profile.ApiKey);
+            }
+        }
+
+        /// <summary>Decrypt the secret fields of every server profile after deserializing.</summary>
+        private static void DecryptSecrets(GlobalSpoolSettings settings)
+        {
+            foreach (var profile in settings.TorrentServers.Values)
+            {
+                profile.Username = _protector.Unprotect(profile.Username);
+                profile.Password = _protector.Unprotect(profile.Password);
+                profile.ApiKey = _protector.Unprotect(profile.ApiKey);
+            }
         }
 
         private static GlobalSpoolSettings CreateDefaultSettings()

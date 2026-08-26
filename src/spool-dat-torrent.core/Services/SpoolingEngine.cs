@@ -59,6 +59,13 @@ namespace SpoolDatTorrent.Core.Services
         // a mid-stream settings/cap change) is resynced with the actual on-disk data.
         private readonly ConcurrentDictionary<string, int> _drainFailures = new(StringComparer.OrdinalIgnoreCase);
 
+        // Hard cap on consecutive DRAIN passes that make no progress. Beyond the delete+readd
+        // resync (see _drainFailures), if the source files still can't be found we would retry
+        // forever (e.g. qBittorrent configured with an "incomplete" folder that SpoolDatTorrent
+        // cannot see because the volume isn't mounted). At this threshold the stream is flagged
+        // Error with an actionable message instead of looping indefinitely.
+        private const int MaxDrainFailuresBeforeError = 6;
+
         // Whether errored streams have already been re-activated for this engine instance.
         // A fresh engine = a restart, so errored streams are retried once at startup.
         private bool _hasReactivatedOnStart;
@@ -167,7 +174,7 @@ namespace SpoolDatTorrent.Core.Services
 
             // 4. Report the full stream list (all jobs, not just the processed ones) so a
             //    dashboard can render every job with its latest known progress.
-            ReportAllStreams(allStreams);
+            await ReportAllStreamsAsync(dbContext, allStreams, cancellationToken);
         }
 
         private void LogStatus(string message)
@@ -211,14 +218,40 @@ namespace SpoolDatTorrent.Core.Services
             _progressSnapshots[snapshot.TorrentIdentifier] = snapshot;
         }
 
-        private void ReportAllStreams(IReadOnlyList<TorrentStreamItem> allStreams)
+        private async Task ReportAllStreamsAsync(SpoolDbContext dbContext, IReadOnlyList<TorrentStreamItem> allStreams, CancellationToken cancellationToken)
         {
             if (_progressReporter == null) return;
 
+            // Re-read fresh statuses from the DB so a just-clicked Pause/Resume (which writes
+            // via a different DbContext) is reflected immediately, rather than being
+            // overwritten by the stale in-memory list loaded at the start of this cycle.
+            var freshStatuses = await dbContext.Streams
+                .AsNoTracking()
+                .Select(s => new { s.TorrentIdentifier, s.Status, s.MovedCount, s.TotalCount })
+                .ToDictionaryAsync(s => s.TorrentIdentifier, cancellationToken);
+
             var list = allStreams
-                .Select(s => _progressSnapshots.TryGetValue(s.TorrentIdentifier, out var snap)
-                    ? snap
-                    : new StreamProgressInfo { Name = s.Name, TorrentIdentifier = s.TorrentIdentifier, StreamId = s.Id, Status = s.Status.ToString() })
+                .Select(s =>
+                {
+                    if (_progressSnapshots.TryGetValue(s.TorrentIdentifier, out var snap))
+                    {
+                        if (freshStatuses.TryGetValue(s.TorrentIdentifier, out var fresh))
+                        {
+                            snap.Status = fresh.Status.ToString();
+                            snap.MovedCount = fresh.MovedCount;
+                            snap.TotalCount = fresh.TotalCount;
+                        }
+                        return snap;
+                    }
+
+                    return new StreamProgressInfo
+                    {
+                        Name = s.Name,
+                        TorrentIdentifier = s.TorrentIdentifier,
+                        StreamId = s.Id,
+                        Status = freshStatuses.TryGetValue(s.TorrentIdentifier, out var f) ? f.Status.ToString() : s.Status.ToString()
+                    };
+                })
                 .ToList();
 
             _progressReporter.ReportStreams(list);
@@ -631,7 +664,24 @@ namespace SpoolDatTorrent.Core.Services
                     int failures = _drainFailures.AddOrUpdate(stream.TorrentIdentifier, 1, (_, c) => c + 1);
                     Logger.LogDebug($"[DRAIN] corrupt source detected, consecutive failures={failures}");
 
-                    if (failures >= 2)
+                    if (failures >= MaxDrainFailuresBeforeError)
+                    {
+                        // Repeatedly resyncing has not helped — the completed files still
+                        // can't be found on disk. The most likely cause is a qBittorrent
+                        // "keep incomplete torrents in" folder that SpoolDatTorrent can't
+                        // see (the volume isn't mounted at the same path). Stop retrying
+                        // and surface an actionable Error instead of looping forever.
+                        _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
+                        string message =
+                            "Completed files are reported as done but cannot be found on disk. " +
+                            "If qBittorrent uses a separate 'incomplete' folder, mount it at the " +
+                            "same path in SpoolDatTorrent. See logs for details.";
+                        _statusMessages[stream.TorrentIdentifier] = message;
+                        LogStatus("Move keeps failing to locate completed files; marking stream as Error.");
+                        stream.Status = StreamLifecycleStatus.Error;
+                        await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
+                    }
+                    else if (failures >= 2)
                     {
                         _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
                         LogStatus($"Source data missing; forcing a re-check to resync with qBittorrent...");

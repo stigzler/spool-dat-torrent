@@ -63,5 +63,36 @@ namespace SpoolDatTorrent.Core.Progress
                 _streams.RemoveAll(s => s.TorrentIdentifier == torrentIdentifier);
             }
         }
+
+        /// <summary>Update the status of the given stream IDs in the live snapshots.</summary>
+        public void UpdateStatuses(IEnumerable<int> streamIds, string status)
+        {
+            var ids = new HashSet<int>(streamIds);
+            lock (_lock)
+            {
+                foreach (var s in _streams)
+                {
+                    if (ids.Contains(s.StreamId))
+                    {
+                        s.Status = status;
+                    }
+                }
+            }
+        }
+
+        /// <summary>Update the status of a single stream in the live snapshots.</summary>
+        public void UpdateStatus(int streamId, string status)
+        {
+            lock (_lock)
+            {
+                foreach (var s in _streams)
+                {
+                    if (s.StreamId == streamId)
+                    {
+                        s.Status = status;
+                    }
+                }
+            }
+        }
     }
 }

@@ -46,6 +46,14 @@ namespace SpoolDatTorrent.Core.Models
         /// </summary>
         public string DePriorityTerms { get; set; } = string.Empty;
         public StreamLifecycleStatus Status { get; set; } = StreamLifecycleStatus.Active;
+
+        /// <summary>
+        /// True when this stream was paused by the global "Pause All" action (as opposed to a
+        /// manual per-stream pause). Persisted so the global Resume can restore exactly the
+        /// streams it paused, even after an app restart.
+        /// </summary>
+        public bool PausedByGlobal { get; set; }
+
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
         public List<TorrentFileItem> Files { get; set; } = new();
         public string ServerProfileId { get; set; } = string.Empty;

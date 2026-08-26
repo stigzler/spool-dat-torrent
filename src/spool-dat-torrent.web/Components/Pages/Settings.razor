@@ -1,9 +1,10 @@
 @page "/settings"
+@attribute [Authorize]
 @using SpoolDatTorrent.Core.Configuration
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 
-<PageTitle>Settings</PageTitle>
+<PageTitle>SpoolDatTorrent</PageTitle>
 
 <h1 class="mb-4">Settings</h1>
 
@@ -67,18 +68,6 @@
                              Class="sdt-numeric" />
         </MudItem>
         <MudItem xs="12" md="6">
-            <MudTextField @bind-Value="_settings.AdminPassword"
-                          @bind-Value:after="ScheduleSave"
-                          Label="Admin Password"
-                          HelperText="Password required to log in to this web UI. Leave blank to disable login."
-                          Variant="Variant.Outlined" FullWidth="true"
-                          InputType="@(_showPassword ? InputType.Text : InputType.Password)"
-                          Adornment="Adornment.End"
-                          AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
-                          OnAdornmentClick="TogglePasswordVisibility"
-                          AdornmentAriaLabel="Toggle password visibility" />
-        </MudItem>
-        <MudItem xs="12" md="6">
             <MudSwitch T="bool" @bind-Value="_settings.ConfirmDeleteConfirmation"
                        @bind-Value:after="ScheduleSave"
                        Label="Confirm before deleting a stream"
@@ -95,7 +84,6 @@
     private int _pollInterval;
     private int _settlingTimeSeconds;
     private int _serverRetryCount;
-    private bool _showPassword;
     private CancellationTokenSource? _debounce;
 
     protected override void OnInitialized()
@@ -103,11 +91,6 @@
         _pollInterval = _settings.PollIntervalSeconds;
         _settlingTimeSeconds = _settings.SettlingTimeSeconds;
         _serverRetryCount = _settings.ServerRetryCount;
-    }
-
-    private void TogglePasswordVisibility()
-    {
-        _showPassword = !_showPassword;
     }
 
     private IJSObjectReference? _module;

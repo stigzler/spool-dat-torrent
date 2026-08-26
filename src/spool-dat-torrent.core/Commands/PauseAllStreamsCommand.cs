@@ -39,6 +39,7 @@ namespace SpoolDatTorrent.Core.Commands
             foreach (var stream in activeStreams)
             {
                 stream.Status = StreamLifecycleStatus.Paused;
+                stream.PausedByGlobal = true;
             }
 
             await db.SaveChangesAsync(cancellationToken);

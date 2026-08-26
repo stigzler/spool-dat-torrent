@@ -2,7 +2,7 @@
 
 <MudDialog>
     <DialogContent>
-        <MudText>@ContentText</MudText>
+        <MudText Style="white-space: pre-line;">@ContentText</MudText>
         <MudStack Class="mt-3">
             <MudCheckBox T="bool" @bind-Value="_dontAskAgain" Label="Don't show this message again" Color="Color.Primary" />
         </MudStack>

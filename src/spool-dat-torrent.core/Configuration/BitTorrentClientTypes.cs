@@ -20,8 +20,7 @@ namespace SpoolDatTorrent.Core.Configuration
         /// <summary>The canonical, ordered list of client types offered to the user.</summary>
         public static readonly IReadOnlyList<string> All = new List<string>
         {
-            QBittorrent,
-            Deluge
+            QBittorrent            
         };
     }
 }

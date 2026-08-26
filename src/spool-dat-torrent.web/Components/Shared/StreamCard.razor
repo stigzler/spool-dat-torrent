@@ -25,17 +25,22 @@
                 }
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">@ServerName</MudChip>
                 <MudText Typo="Typo.caption" Class="text-secondary" Style="white-space: nowrap;">@CreatedText</MudText>
-                <MudText Typo="Typo.caption" Color="Color.Primary" Style="white-space: nowrap;">Batch Cap: @CapText</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Primary" Style="white-space: nowrap;">Spool Size Cap: @CapText</MudText>
             </div>
             <div style="display: flex; align-items: center; flex-shrink: 0; gap: 8px;">
                 @if (IsCompleted)
                 {
-                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.DeleteForever" OnClick="OnRemove" Style="white-space: nowrap; flex-shrink: 0;">Remove</MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.DeleteForever" OnClick="OnRemove" Style="white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">Remove</MudButton>
                 }
                 else
                 {
-                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" StartIcon="@ActionIcon" OnClick="OnStatusChange" Style="white-space: nowrap; flex-shrink: 0;">@ActionLabel</MudButton>
-                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.Close" OnClick="OnCancel" Style="white-space: nowrap; flex-shrink: 0;">Cancel</MudButton>
+                    @if (GlobalPaused)
+                    {
+                        <MudText Typo="Typo.caption" Class="text-secondary" Style="white-space: nowrap; opacity: 0.7;">ⓘ Use Global resume in top bar</MudText>
+                    }
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" StartIcon="@ActionIcon" OnClick="OnStatusChange" Disabled="GlobalPaused" Style="white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">@ActionLabel</MudButton>
+
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.Close" OnClick="OnCancel" Style="white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">Cancel</MudButton>
                 }
             </div>
         </div>
@@ -149,7 +154,7 @@
                                 <MudText Typo="Typo.body2" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@file.Name</MudText>
                                 <MudText Typo="Typo.body2" Class="ml-2">@file.Progress.ToString("P1")</MudText>
                             </div>
-                            <MudProgressLinear Value="@(file.Progress * 100)" Color="Color.Primary" Class="mt-1" Style="height: 6px;" />
+                            <MudProgressLinear Value="@(file.Progress * 100)" Color="Color.Primary" Class="mt-1" Style="height: 4px;" />
                         </div>
                         <MudText Typo="Typo.body2" Class="text-secondary ml-2" Style="white-space: nowrap;">@FileSizeText(file)</MudText>
                     </div>
@@ -162,6 +167,8 @@
 @code {
     [Parameter] public StreamDetails Stream { get; set; } = default!;
     [Parameter] public StreamProgressInfo? Live { get; set; }
+
+    [Parameter] public bool GlobalPaused { get; set; }
 
     [Parameter] public EventCallback OnStatusChange { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }

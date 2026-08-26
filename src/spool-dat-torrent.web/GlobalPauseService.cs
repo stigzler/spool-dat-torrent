@@ -1,30 +1,42 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SpoolDatTorrent.Core.Commands;
+using SpoolDatTorrent.Core.Progress;
 
 namespace SpoolDatTorrent.Web
 {
     /// <summary>
-    /// Holds global "Pause All" / "Resume All" state. When the user pauses everything, the
-    /// set of stream IDs that were Active is snapshotted so that resuming only restarts the
-    /// streams that were running — not ones that were already Paused/Completed.
+    /// Global "Pause All" / "Resume All" orchestration. State is persisted via the
+    /// <c>PausedByGlobal</c> flag on each stream, so it survives app/circuit restarts.
     /// </summary>
     public class GlobalPauseService
     {
         private readonly IServiceScopeFactory _scopeFactory;
-        private readonly object _lock = new();
+        private readonly InMemoryProgressStore _store;
 
-        private HashSet<int> _snapshot = new();
-
+        /// <summary>
+        /// True when a global pause is active (any stream is marked PausedByGlobal). Derived
+        /// from the DB on first access so it is correct immediately after a restart.
+        /// </summary>
         public bool IsPaused { get; private set; }
 
-        public GlobalPauseService(IServiceScopeFactory scopeFactory)
+        public GlobalPauseService(IServiceScopeFactory scopeFactory, InMemoryProgressStore store)
         {
             _scopeFactory = scopeFactory;
+            _store = store;
         }
 
-        /// <summary>Pause every Active stream and remember which ones were running.</summary>
+        /// <summary>Load whether a global pause is currently active from the DB.</summary>
+        public async Task InitializeAsync()
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<SpoolDatTorrent.Core.Data.SpoolDbContext>();
+            IsPaused = await db.Streams.AnyAsync(s => s.PausedByGlobal);
+        }
+
+        /// <summary>Pause every Active stream, marking them PausedByGlobal.</summary>
         public async Task PauseAllAsync()
         {
             List<int> activeIds;
@@ -34,27 +46,22 @@ namespace SpoolDatTorrent.Web
                 activeIds = await cmd.ExecuteAsync();
             }
 
-            lock (_lock)
-            {
-                _snapshot = new HashSet<int>(activeIds);
-                IsPaused = true;
-            }
+            IsPaused = true;
+            _store.UpdateStatuses(activeIds, "Paused");
         }
 
-        /// <summary>Resume only the streams that were Active when the global pause happened.</summary>
+        /// <summary>Resume all streams paused by the global pause.</summary>
         public async Task ResumeAllAsync()
         {
-            List<int> toResume;
-            lock (_lock)
+            List<int> resumedIds;
+            using (var scope = _scopeFactory.CreateScope())
             {
-                toResume = new List<int>(_snapshot);
-                _snapshot.Clear();
-                IsPaused = false;
+                var cmd = scope.ServiceProvider.GetRequiredService<ResumeAllStreamsCommand>();
+                resumedIds = await cmd.ExecuteAsync();
             }
 
-            using var scope = _scopeFactory.CreateScope();
-            var cmd = scope.ServiceProvider.GetRequiredService<ResumeAllStreamsCommand>();
-            await cmd.ExecuteAsync(toResume);
+            IsPaused = false;
+            _store.UpdateStatuses(resumedIds, "Active");
         }
     }
 }

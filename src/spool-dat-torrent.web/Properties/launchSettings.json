@@ -7,7 +7,9 @@
         "launchBrowser": true,
         "applicationUrl": "http://localhost:5111",
         "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "SDT_SECRET_KEY": "9AwJVcyThaEyqnM4vgkm",
+          "SDT_ADMIN_PASSWORD": "astraastra"
         }
       },
       "https": {
@@ -16,7 +18,9 @@
         "launchBrowser": true,
         "applicationUrl": "https://localhost:7143;http://localhost:5111",
         "environmentVariables": {
-          "ASPNETCORE_ENVIRONMENT": "Development"
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "SDT_SECRET_KEY": "9AwJVcyThaEyqnM4vgkm",
+          "SDT_ADMIN_PASSWORD": "astraastra"
         }
       }
     }

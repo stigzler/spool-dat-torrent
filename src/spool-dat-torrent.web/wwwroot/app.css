@@ -29,6 +29,76 @@ h1, h2, h3, h4, h5, h6 {
     font-weight: 500;
 }
 
+/* Vertically center MudBlazor button icon + text (the icon sits slightly low by default). */
+.mud-button-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.mud-button-label .mud-icon-root {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+/* Force a consistent progress-bar height so rows don't vary by a pixel or two. */
+.mud-progress-linear {
+    height: 4px !important;
+}
+.mud-progress-linear .mud-progress-linear-bar {
+    height: 4px !important;
+}
+
+/* Make the section divider in the Add Stream dialog more visible. */
+.sdt-strong-divider {
+    border-color: var(--mud-palette-text-secondary) !important;
+    border-width: 1.5px !important;
+    opacity: 1 !important;
+}
+
+/* Make the uploaded-file chip span the full width of the dialog so long filenames
+   have room (MudChip is inline-flex and shrinks to content by default). The content
+   span (.mud-chip-content) flexes to fill, so the close button stays on the right. */
+.sdt-file-chip {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 auto;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+.sdt-file-chip .mud-chip-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+/* Rotating ring around the global Pause/Resume button when streams are active. */
+.sdt-pause-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.sdt-pause-ring {
+    position: absolute;
+    inset: 0;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: sdt-spin 1.2s linear infinite;
+    pointer-events: none;
+}
+@keyframes sdt-spin {
+    to { transform: rotate(360deg); }
+}
+
 a, .btn-link {
     color: #006bb7;
 }

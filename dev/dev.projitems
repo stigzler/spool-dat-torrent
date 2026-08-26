@@ -11,7 +11,12 @@
   <ItemGroup>
     <None Include="$(MSBuildThisFileDirectory)docs\developmentStrategy.md" />
     <None Include="$(MSBuildThisFileDirectory)docs\draftUserGuide.md" />
+    <None Include="$(MSBuildThisFileDirectory)docs\ai-docs\progressBarHeightIssue.md" />
+    <None Include="$(MSBuildThisFileDirectory)docs\progressBarHeightIssue.md" />
     <None Include="$(MSBuildThisFileDirectory)docs\PROJECT_KNOWLEDGE_BASE.md" />
     <None Include="$(MSBuildThisFileDirectory)docs\wireframes\MainPageAndStreams.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="$(MSBuildThisFileDirectory)docs\ai-docs\" />
   </ItemGroup>
 </Project>

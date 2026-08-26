@@ -1,4 +1,5 @@
 @page "/clients"
+@attribute [Authorize]
 @using SpoolDatTorrent.Core.Commands
 @using SpoolDatTorrent.Core.Configuration
 @using SpoolDatTorrent.Web.Components.Shared
@@ -8,7 +9,7 @@
 @inject AddServerProfileCommand AddServerCommand
 @inject ListStreamsCommand ListStreamsCommand
 
-<PageTitle>Servers</PageTitle>
+<PageTitle>SpoolDatTorrent</PageTitle>
 
 <div class="d-flex align-items-center justify-content-between mb-4">
     <h1 class="mb-0">Servers</h1>

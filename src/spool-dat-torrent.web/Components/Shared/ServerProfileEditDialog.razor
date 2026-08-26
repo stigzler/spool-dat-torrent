@@ -6,6 +6,12 @@
     <DialogContent>
         <MudGrid>
             <MudItem xs="12">
+                <MudText Typo="Typo.body2" Class="mb-2 text-secondary">
+                    Edit your BitTorrent server details according to its requirements. Different clients will need different permutations of username, password and API key. For example,
+                    QBitTorrent only requires username/password OR API Key (latter recommended). 
+                </MudText>
+            </MudItem>
+            <MudItem xs="12">
                 <MudTextField @bind-Value="_name"
                               @bind-Value:after="HandleName"
                               Label="Profile Name"
@@ -29,6 +35,7 @@
                 <MudTextField @bind-Value="Profile.Username"
                               @bind-Value:after="ScheduleSave"
                               Label="Username"
+                              HelperText="Username for the BitTorrent Server"
                               Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
             <MudItem xs="12" md="6">
@@ -36,16 +43,24 @@
                               @bind-Value:after="ScheduleSave"
                               Label="Password"
                               InputType="InputType.Password"
+                              HelperText="Password for the BitTorrent Server"
                               Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="Profile.ApiKey"
                               @bind-Value:after="ScheduleSave"
                               Label="API Key"
-                              HelperText="Optional qBittorrent API key. Takes precedence over username/password when set."
-                              Variant="Variant.Outlined" FullWidth="true" />
+                              HelperText="Client API key fo the BitTorrent Server"
+                              Variant="Variant.Outlined" FullWidth="true"
+                              InputType="@(_showApiKey ? InputType.Text : InputType.Password)"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@(_showApiKey ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                              OnAdornmentClick="ToggleApiKeyVisibility"
+                              AdornmentAriaLabel="Toggle API key visibility" />
             </MudItem>
-            <MudItem xs="12" md="6">
+            @* Client Type dropdown hidden for now — only qBittorrent is implemented. Re-enable
+               when additional client types (e.g. Deluge) are supported. *@
+            @* <MudItem xs="12" md="6">
                 <MudSelect T="string" @bind-Value="Profile.ClientType"
                            @bind-Value:after="ScheduleSave"
                            Label="Client Type"
@@ -55,14 +70,15 @@
                         <MudSelectItem Value="@type">@type</MudSelectItem>
                     }
                 </MudSelect>
-            </MudItem>
+            </MudItem> *@
         </MudGrid>
 
         <MudDivider Class="my-3" />
 
         <MudText Typo="Typo.subtitle2" Class="mb-1">Docker path mapping (only for container installs)</MudText>
-        <MudText Typo="Typo.caption" Class="mb-3">
-            Only needed when qBittorrent and SpoolDatTorrent run in separate containers that see the same disk at different paths. If you mount the same host folder at the same path in both containers, leave both blank — no mapping is required.
+        <MudText Typo="Typo.caption" Class="mb-1">
+            Only needed when your BitTorrent Client and SpoolDatTorrent run in separate containers that see the same disk at different paths. 
+            If you mount the same host folder at the same path in both containers, leave both blank — no mapping is required.
         </MudText>
         <MudGrid>
             <MudItem xs="12" md="6">
@@ -103,7 +119,13 @@
     private string _capText = string.Empty;
     private bool _capInitialized;
     private bool _isTesting;
+    private bool _showApiKey;
     private CancellationTokenSource? _debounce;
+
+    private void ToggleApiKeyVisibility()
+    {
+        _showApiKey = !_showApiKey;
+    }
 
     protected override void OnParametersSet()
     {

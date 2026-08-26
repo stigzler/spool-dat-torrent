@@ -13,8 +13,8 @@ RUN dotnet publish "src/spool-dat-torrent.web/spool-dat-torrent.web.csproj" -c R
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-EXPOSE 8080
-ENV ASPNETCORE_HTTP_PORTS=8080
+EXPOSE 6502
+ENV ASPNETCORE_HTTP_PORTS=6502
 
 RUN mkdir -p /app/data /app/dats
 

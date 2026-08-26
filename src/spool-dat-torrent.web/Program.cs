@@ -104,15 +104,19 @@ namespace SpoolDatTorrent.Web
             app.UseAuthorization();
 
             // Login/logout endpoints. Login compares the submitted password against the
-            // AdminPassword in config.json and signs the user in via a cookie.
+            // admin password and signs the user in via a cookie.
+            // The password comes from the SDT_ADMIN_PASSWORD environment variable (set in a
+            // compose file / Docker secret).
             // NOTE: these use /auth/* paths (not /login) to avoid colliding with the
             // Login.razor @page "/login" route, which also matches POST in Blazor.
-            app.MapPost("/auth/login", async (HttpContext ctx, IOptions<GlobalSpoolSettings> opts) =>
+            app.MapPost("/auth/login", async (HttpContext ctx) =>
             {
                 var form = await ctx.Request.ReadFormAsync();
                 var password = form["password"].ToString();
 
-                if (!string.IsNullOrWhiteSpace(password) && password == opts.Value.AdminPassword)
+                var expected = Environment.GetEnvironmentVariable("SDT_ADMIN_PASSWORD") ?? string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(password) && password == expected)
                 {
                     var claims = new List<Claim> { new(ClaimTypes.Name, "admin") };
                     var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
