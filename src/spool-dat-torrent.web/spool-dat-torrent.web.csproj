@@ -6,7 +6,7 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<RootNamespace>SpoolDatTorrent.Web</RootNamespace>
 		<AssemblyName>SpoolDatTorrent.Web</AssemblyName>
-		<Version>0.1.0</Version>
+		<Version>0.8.0</Version>
 		<BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
 	</PropertyGroup>
 
