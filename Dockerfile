@@ -19,4 +19,4 @@ ENV ASPNETCORE_HTTP_PORTS=6502
 RUN mkdir -p /app/data /app/dats
 
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "spool-dat-torrent.web.dll"]
+ENTRYPOINT ["dotnet", "SpoolDatTorrent.Web.dll"]
