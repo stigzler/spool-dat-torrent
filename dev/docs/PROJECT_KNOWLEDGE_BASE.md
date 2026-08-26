@@ -393,6 +393,7 @@ These live in `core/Commands/` and are reusable by CLI, web, desktop:
 - **Logging** via `Logger.Log` (static, writes to `SpoolDatTorrent.log`). `LogStatus` in the engine routes to the reporter (or console if no reporter).
 - **The engine is stateless-by-design** for resume: it re-derives per-file state from qBittorrent + filesystem each cycle, not from the DB.
 - **Only `Active` streams are spooled.** `Error` re-activates on restart; `Paused`/`Completed` do not.
+- **Destination path** is `[DefaultSpoolingTarget]/[torrent name]` where *torrent name* is the **real** name reported by qBittorrent (`GetTorrentNameAsync`), sanitized — NOT the friendly `Stream.Name`. The torrent name can contain nested folder segments (e.g. `Minerva_Myrient\Redump\Sony - PlayStation`), which reproduces the folder structure under the target. The web UI's `StreamCard.DestinationText` reads `Live.TorrentName` (from `StreamProgressInfo`) to mirror this. Do NOT use `Stream.Name` for the path — that was a bug that showed a flat, wrong path.
 
 ## 16.5 Database migrations
 

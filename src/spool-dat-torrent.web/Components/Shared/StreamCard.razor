@@ -189,7 +189,9 @@
     private int MovedCount => Live?.MovedCount ?? Stream.MovedCount;
     private int TotalCount => Live?.TotalCount ?? Stream.TotalCount;
 
-    private double ProgressPercent => TotalCount == 0 ? 0 : (double)MovedCount / TotalCount * 100;
+    private double ProgressPercent => Status == "Completed"
+        ? 100
+        : (TotalCount == 0 ? 0 : (double)MovedCount / TotalCount * 100);
 
     private bool HasPriorityTerms => !string.IsNullOrWhiteSpace(Stream.PriorityTerms);
     private bool HasDePriorityTerms => !string.IsNullOrWhiteSpace(Stream.DePriorityTerms);
@@ -338,9 +340,23 @@
                 return "No destination configured (set a default in Settings)";
             }
 
-            string folder = string.IsNullOrWhiteSpace(Stream.Name) ? Stream.TorrentIdentifier : Stream.Name;
+            // Use the real torrent name (from the live snapshot) so the path matches what
+            // the engine actually writes. The torrent name may contain nested folder
+            // segments (e.g. "Minerva_Myrient\Redump\Sony - PlayStation"). Fall back to the
+            // friendly stream name only when no live torrent name is available.
+            string folder = !string.IsNullOrWhiteSpace(Live?.TorrentName)
+                ? SanitizeFolderName(Live!.TorrentName)
+                : string.IsNullOrWhiteSpace(Stream.Name) ? Stream.TorrentIdentifier : Stream.Name;
+
             return System.IO.Path.Combine(Settings.DefaultSpoolingTarget, folder);
         }
+    }
+
+    private static string SanitizeFolderName(string name)
+    {
+        var invalid = System.IO.Path.GetInvalidFileNameChars();
+        var sanitized = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
+        return string.IsNullOrWhiteSpace(sanitized) ? "stream" : sanitized;
     }
 
     private Color ProgressColor => Status switch

@@ -1,5 +1,26 @@
+@using MudBlazor
+@using Microsoft.AspNetCore.Http
 @inherits LayoutComponentBase
+
+<MudThemeProvider Theme="AppTheme.Theme" @bind-IsDarkMode="_isDarkMode" />
+<MudDialogProvider />
+<MudSnackbarProvider />
+<MudPopoverProvider />
 
 @* Minimal layout (no sidebar/nav) used by the login page. *@
 
 @Body
+
+@code {
+    [Inject]
+    private IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
+
+    private bool _isDarkMode;
+
+    protected override void OnInitialized()
+    {
+        // Apply the saved dark-mode preference so the login page matches the rest of the app.
+        var cookie = HttpContextAccessor.HttpContext?.Request.Cookies["sdt_darkmode"];
+        _isDarkMode = bool.TryParse(cookie, out var dark) && dark;
+    }
+}

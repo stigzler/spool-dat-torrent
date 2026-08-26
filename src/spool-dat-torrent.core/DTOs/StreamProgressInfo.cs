@@ -11,6 +11,11 @@ namespace SpoolDatTorrent.Core.DTOs
         public string Name { get; set; } = string.Empty;
         public string TorrentIdentifier { get; set; } = string.Empty;
 
+        /// <summary>The real torrent name as reported by the BitTorrent client (may contain
+        /// nested folder segments, e.g. "Set\Region\Title"). Used to compute the destination
+        /// path.</summary>
+        public string TorrentName { get; set; } = string.Empty;
+
         /// <summary>The database Id of the stream.</summary>
         public int StreamId { get; set; }
 

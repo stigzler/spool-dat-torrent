@@ -520,6 +520,7 @@ namespace SpoolDatTorrent.Core.Services
                 TorrentIdentifier = stream.TorrentIdentifier,
                 StreamId = stream.Id,
                 Status = stream.Status.ToString(),
+                TorrentName = torrentName,
                 ServerName = serverProfileName,
                 CreatedUtc = stream.CreatedUtc,
                 TotalSizeBytes = desiredFiles.Sum(f => f.Size),
@@ -638,8 +639,14 @@ namespace SpoolDatTorrent.Core.Services
                     }
                     else
                     {
-                        // First occurrence — give qBittorrent one more cycle to resync before
-                        // forcing the rebuild.
+                        // First occurrence — give qBittorrent time to flush the file to disk
+                        // before retrying. A 100%-reported file can still be 0 bytes on disk
+                        // briefly (write-buffer flush), so hammering it every second is noisy
+                        // and pointless. Wait the settling time, then resume and retry next
+                        // cycle. The delete+readd safeguard (>= 2 consecutive failures) is
+                        // unchanged and still handles genuinely-stale progress.
+                        int backoffSeconds = stream.SettlingTimeSeconds ?? _settings.SettlingTimeSeconds;
+                        await Task.Delay(TimeSpan.FromSeconds(Math.Max(2, backoffSeconds)), cancellationToken);
                         await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
                     }
                 }
@@ -664,10 +671,71 @@ namespace SpoolDatTorrent.Core.Services
                 return;
             }
 
-            // STATE: COMPLETE — nothing left to download or move
-            LogStatus($"Stream ({stream.Id}) '{stream.Name}' completed!");
+            // STATE: COMPLETE — nothing left to download or move. Verify the destination
+            // before declaring the stream complete: every desired file should exist at its
+            // destination with the correct size. If any are missing/wrong-sized, flag the
+            // stream as Error instead of falsely reporting completion (no auto-fix).
+            var (verified, missing) = VerifyDestination(
+                destinationRoot, prefixToStrip, desiredFiles, alreadyMoved, profileSettings);
+
+            if (!verified)
+            {
+                LogStatus($"Completion verification failed: {missing.Count} file(s) missing or wrong size at destination.");
+                foreach (var name in missing.Take(10))
+                {
+                    Logger.Log($"[Verify] {name}");
+                }
+                stream.Status = StreamLifecycleStatus.Error;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            LogStatus($"All files verified and in destination folder. Stream ({stream.Id}) '{stream.Name}' completed!");
             stream.Status = StreamLifecycleStatus.Completed;
             await dbContext.SaveChangesAsync(cancellationToken);
+
+            // Re-emit the snapshot with the final Completed status and the verification
+            // message, so the UI shows 100% + the message and it persists across polls
+            // (the snapshot built at the start of this method still had Status=Active).
+            snapshot.Status = StreamLifecycleStatus.Completed.ToString();
+            snapshot.StatusMessage = GetStreamStatusMessage(stream.TorrentIdentifier);
+            snapshot.MovedCount = alreadyMoved.Count;
+            snapshot.TotalCount = desiredFiles.Count;
+            ReportStreamSnapshot(snapshot);
+        }
+
+        /// <summary>
+        /// Verify that every desired file that should have been moved now exists at its
+        /// destination with the correct size. Returns (success, list of problem file names).
+        /// </summary>
+        private (bool Success, List<string> Problems) VerifyDestination(
+            string destinationRoot,
+            string prefixToStrip,
+            List<TorrentFileDto> desiredFiles,
+            List<TorrentFileDto> alreadyMoved,
+            TorrentServerProfile profileSettings)
+        {
+            var problems = new List<string>();
+
+            foreach (var file in desiredFiles)
+            {
+                // Files not yet moved (still in the torrent, not spooled) are not part of
+                // this verification — they belong to the not-yet-processed remainder.
+                if (!alreadyMoved.Any(f => f.Index == file.Index))
+                {
+                    continue;
+                }
+
+                string destinationPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
+                var info = new FileInfo(destinationPath);
+
+                if (!info.Exists || info.Length != file.Size)
+                {
+                    problems.Add($"{Path.GetFileName(file.Name)} (expected {file.Size}, actual {(info.Exists ? info.Length : 0)})");
+                }
+            }
+
+            return (problems.Count == 0, problems);
         }
 
         private static string SanitizeFolderName(string name)

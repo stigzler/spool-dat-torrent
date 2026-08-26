@@ -1,11 +1,13 @@
 @page "/login"
 @layout EmptyLayout
 @inject NavigationManager Navigation
+@using System.Reflection
 
-<MudContainer MaxWidth="MaxWidth.Small" Class="mt-6">
-    <MudCard Class="pa-4">
-        <MudText Typo="Typo.h5" Class="mb-3">Sign in</MudText>
+<div class="d-flex flex-column align-items-center justify-content-center" style="min-height: 100vh; text-align: center; padding: 16px;">
+    <MudImage Src="/icon-128px.png" Alt="SpoolDatTorrent Icon" Height="128" Width="128" Style="object-fit: contain;" />
+    <MudText Typo="Typo.h6" Class="mt-3" Style="font-family: 'Rubik', sans-serif; font-weight: 500;">SpoolDatTorrent</MudText>
 
+    <MudCard Class="pa-6 mt-5" Style="width: 100%; max-width: 360px;">
         @if (_error)
         {
             <MudAlert Severity="Severity.Error" Class="mb-3">Incorrect password.</MudAlert>
@@ -13,18 +15,26 @@
 
         @* Plain HTML form posts to the /auth/login endpoint defined in Program.cs, which
            performs the password check and sets the auth cookie. *@
-        <form method="post" action="/auth/login">
-            <input type="password" name="password" class="mud-input" placeholder="Password" />
-            <button type="submit" class="mud-button-root mud-button mud-button-filled mud-button-filled-primary">Log in</button>
+        <form method="post" action="/auth/login" class="d-flex flex-column" style="gap: 16px;">
+            <div class="text-left">
+                <MudText Typo="Typo.body2" Class="mb-1">Password:</MudText>
+                <input type="password" name="password" placeholder="Enter password"
+                       style="width: 100%; padding: 10px 12px; border: 1px solid rgba(128,128,128,0.5); border-radius: 4px; background: transparent; color: inherit; font-size: 1rem; box-sizing: border-box;" />
+            </div>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">Log in</MudButton>
         </form>
+        <MudText Typo="Typo.caption" Class="mt-3" Style="opacity: 0.6;">Version @AppVersionString</MudText>
     </MudCard>
-</MudContainer>
+</div>
 
 @code {
     private bool _error;
 
     [SupplyParameterFromQuery(Name = "error")]
     private string? Error { get; set; }
+
+    private string AppVersionString =>
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?";
 
     protected override void OnInitialized()
     {

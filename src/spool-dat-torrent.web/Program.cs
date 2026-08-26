@@ -54,10 +54,10 @@ namespace SpoolDatTorrent.Web
             builder.Services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
-            builder.Services.AddTransient<IDatParserService, LogiqxDatParserService>();
+            builder.Services.AddSingleton<IDatParserService, LogiqxDatParserService>();
             builder.Services.AddSingleton<InMemoryProgressStore>();
             builder.Services.AddSingleton<ISpoolingProgressReporter>(sp => sp.GetRequiredService<InMemoryProgressStore>());
-            builder.Services.AddTransient<SpoolingEngine>();
+            builder.Services.AddSingleton<SpoolingEngine>();
             builder.Services.AddHostedService<SpoolEngineHostedService>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.DeleteServerProfileCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.AddServerProfileCommand>();

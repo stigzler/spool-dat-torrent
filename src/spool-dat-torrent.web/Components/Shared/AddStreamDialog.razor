@@ -51,8 +51,11 @@
 
 
             <MudTextField @bind-Value="_target"
+                          @bind-Value:after="OnDestinationChanged"
                           Label="Destination folder (this stream, optional)"
                           HelperText="A real folder path where completed files for this stream are moved to. Leave blank to use the global default (set in Settings). Example: C:\Spooled\psx or /mnt/pool/Media/Games/roms/psx."
+                          Error="@(_destinationError != null)"
+                          ErrorText="@_destinationError"
                           Variant="Variant.Outlined" FullWidth="true" />
             <MudTextField @bind-Value="_filter"
                           Label="File Filter (optional)"
@@ -110,8 +113,40 @@
 
     private IBrowserFile? _torrentFile;
     private IBrowserFile? _datFile;
+    private string? _destinationError;
 
-    private bool _isValid => (_torrentFile != null || !string.IsNullOrWhiteSpace(_magnet)) && _datFile != null;
+    private bool _isValid =>
+        ((_torrentFile != null || !string.IsNullOrWhiteSpace(_magnet)) &&
+        _datFile != null) &&
+        (string.IsNullOrWhiteSpace(_target) || IsValidDestination(_target));
+
+    private static bool IsValidDestination(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return true; // blank = use global default
+        }
+
+        // Strip surrounding quotes the user may have pasted (e.g. "C:\...\psx").
+        var trimmed = path.Trim().Trim('"');
+
+        // Reject if it still contains quotes or invalid path characters.
+        if (trimmed.Contains('"') || trimmed.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void OnDestinationChanged()
+    {
+        _destinationError = string.IsNullOrWhiteSpace(_target)
+            ? null
+            : IsValidDestination(_target)
+                ? null
+                : "Invalid path - remove any surrounding quotes or invalid characters.";
+    }
 
     private void Cancel() => MudDialogInstance.Close(DialogResult.Cancel());
 
@@ -157,7 +192,7 @@
             {
                 Name = string.IsNullOrWhiteSpace(_name) ? null : _name.Trim(),
                 Server = string.IsNullOrWhiteSpace(_server) ? null : _server,
-                Target = string.IsNullOrWhiteSpace(_target) ? null : _target.Trim(),
+                Target = string.IsNullOrWhiteSpace(_target) ? null : _target.Trim().Trim('"'),
                 Filter = string.IsNullOrWhiteSpace(_filter) ? null : _filter.Trim(),
                 Strategy = _strategy,
                 SettlingTimeSeconds = _settlingTimeSeconds,
@@ -183,3 +218,4 @@
         _ = AddAsync();
     }
 }
+

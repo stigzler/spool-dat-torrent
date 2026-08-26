@@ -44,9 +44,9 @@ namespace SpoolDatTorrent.Cli.Commands
             services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
             services.AddHttpClient();
             services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
-            services.AddTransient<IDatParserService, LogiqxDatParserService>();
+            services.AddSingleton<IDatParserService, LogiqxDatParserService>();
             services.AddSingleton<ISpoolingProgressReporter, SpectreProgressReporter>();
-            services.AddTransient<SpoolingEngine>();
+            services.AddSingleton<SpoolingEngine>();
             services.AddTransient<DeleteServerProfileCommand>();
             services.AddTransient<AddServerProfileCommand>();
 
