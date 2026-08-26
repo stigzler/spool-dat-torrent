@@ -1,0 +1,27 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Build output
+**/bin
+**/obj
+
+# Local dev databases (never ship these)
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# Local config (secrets) — the container generates its own on first boot
+**/config.json
+
+# IDE / OS cruft
+.vs
+.idea
+*.user
+*.suo
+Thumbs.db
+.DS_Store
+
+# Docs / dev-only
+dev
