@@ -132,7 +132,7 @@ namespace SpoolDatTorrent.Core.Configuration
             return new GlobalSpoolSettings
             {
                 DefaultServerProfile = "LocalQBit",
-                DefaultSpoolingTarget = @"/downloads/spooled",
+                DefaultSpoolingTarget = SpoolPaths.DefaultStagingDir,
                 PollIntervalSeconds = 15,
                 SettlingTimeSeconds = 30,
                 TorrentServers = new Dictionary<string, TorrentServerProfile>
@@ -167,7 +167,7 @@ namespace SpoolDatTorrent.Core.Configuration
             var defaultSettings = new GlobalSpoolSettings
             {
                 DefaultServerProfile = "LocalQBit",
-                DefaultSpoolingTarget = @"/downloads/spooled",
+                DefaultSpoolingTarget = SpoolPaths.DefaultStagingDir,
                 PollIntervalSeconds = 15,
                 SettlingTimeSeconds = 30,
                 TorrentServers = new Dictionary<string, TorrentServerProfile>
@@ -220,7 +220,7 @@ namespace SpoolDatTorrent.Core.Configuration
                 settings = new GlobalSpoolSettings
                 {
                     DefaultServerProfile = "LocalQBit",
-                    DefaultSpoolingTarget = @"/downloads/spooled",
+                    DefaultSpoolingTarget = SpoolPaths.DefaultStagingDir,
                     PollIntervalSeconds = 15,
                     SettlingTimeSeconds = 30,
                     TorrentServers = new Dictionary<string, TorrentServerProfile>()

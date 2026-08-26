@@ -73,13 +73,27 @@
                           HelperText="A friendly display name. Defaults to the uploaded torrent's filename."
                           Variant="Variant.Outlined" FullWidth="true" />
 
-            <MudTextField @bind-Value="_target"
-                          @bind-Value:after="OnDestinationChanged"
-                          Label="Destination folder (this stream, optional)"
-                          HelperText="A real folder path where completed files for this stream are moved to. Leave blank to use the global default (set in Settings). Example: C:\Spooled\psx or /mnt/pool/Media/Games/roms/psx."
-                          Error="@(_destinationError != null)"
-                          ErrorText="@_destinationError"
-                          Variant="Variant.Outlined" FullWidth="true" />
+            <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Start">
+                <MudSelect T="string" @bind-Value="_destinationRoot"
+                           @bind-Value:after="OnDestinationChanged"
+                           Label="Destination root"
+                           Variant="Variant.Outlined"
+                           Style="min-width: 200px;">
+                    <MudSelectItem Value="@_noneKey">None (default)</MudSelectItem>
+                    <MudSelectItem Value="@Settings.DefaultSpoolingTarget">staging-dir</MudSelectItem>
+                    @if (_libraryAvailable)
+                    {
+                        <MudSelectItem Value="@_libraryRoot">library-dir</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudTextField @bind-Value="_targetSubpath"
+                              @bind-Value:after="OnDestinationChanged"
+                              Label="Subfolder (optional)"
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudStack>
+            <MudText Typo="Typo.caption" Color="@(_destinationError != null ? Color.Error : Color.Default)">
+                @DestinationHelperText
+            </MudText>
 
             <MudStack Row="true" Spacing="3">
                 <MudTextField @bind-Value="_filter"
@@ -121,7 +135,8 @@
 
     private string _name = string.Empty;
     private string _server = string.Empty;
-    private string _target = string.Empty;
+    private string _destinationRoot = string.Empty;
+    private string _targetSubpath = string.Empty;
     private string _filter = string.Empty;
     private string _strategy = SpoolingStrategy.MoveFiles.ToString();
     private string _magnet = string.Empty;
@@ -129,11 +144,22 @@
     private string _priorityTerms = string.Empty;
     private string _dePriorityTerms = string.Empty;
 
+    private const string _noneKey = "none";
+
+    private bool _libraryAvailable;
+    private string _libraryRoot = SpoolPaths.DefaultLibraryDir;
+
     protected override void OnInitialized()
     {
         // Default the server profile to the configured default so the user doesn't have to
         // pick one (and can't accidentally add a stream with no server).
         _server = Settings.DefaultServerProfile;
+        _destinationRoot = _noneKey;
+
+        _libraryAvailable = SpoolMountDetection.IsLibraryAvailable(Settings);
+        _libraryRoot = string.IsNullOrWhiteSpace(Settings.LibraryDir)
+            ? SpoolPaths.DefaultLibraryDir
+            : Settings.LibraryDir;
     }
 
     private IBrowserFile? _torrentFile;
@@ -150,7 +176,7 @@
         (_fileError == null) &&
         ((_torrentFile != null || !string.IsNullOrWhiteSpace(_magnet)) &&
         _datFile != null) &&
-        (string.IsNullOrWhiteSpace(_target) || IsValidDestination(_target));
+        _destinationError == null;
 
     private static bool HasAllowedExtension(IBrowserFile file, string[] allowed)
     {
@@ -229,32 +255,93 @@
         return name[..keepStart] + "..." + name[^keepEnd..];
     }
 
-    private static bool IsValidDestination(string? path)
+    /// <summary>
+    /// The resolved override value to store, or null when "none" (or staging + no subpath)
+    /// is selected - meaning the stream uses the default behavior.
+    /// </summary>
+    private string? ResolvedTarget
     {
-        if (string.IsNullOrWhiteSpace(path))
+        get
         {
-            return true; // blank = use global default
+            // "none" ? no override.
+            if (string.Equals(_destinationRoot, _noneKey, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            var subpath = _targetSubpath.Trim().Trim('"').Trim('/', '\\');
+
+            // staging-dir + empty subpath ? default (no override).
+            if (string.Equals(_destinationRoot, Settings.DefaultSpoolingTarget, StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrEmpty(subpath))
+            {
+                return null;
+            }
+
+            // library-dir + empty subpath ? the library root itself.
+            if (string.Equals(_destinationRoot, _libraryRoot, StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrEmpty(subpath))
+            {
+                return _libraryRoot;
+            }
+
+            return $"{_destinationRoot}/{subpath}";
         }
+    }
 
-        // Strip surrounding quotes the user may have pasted (e.g. "C:\...\psx").
-        var trimmed = path.Trim().Trim('"');
-
-        // Reject if it still contains quotes or invalid path characters.
-        if (trimmed.Contains('"') || trimmed.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+    private string DestinationHelperText
+    {
+        get
         {
-            return false;
-        }
+            if (_destinationError != null)
+            {
+                return _destinationError;
+            }
 
-        return true;
+            var target = ResolvedTarget;
+            if (target == null)
+            {
+                var staging = SpoolPathDisplay.ToDisplayPath(Settings, Settings.DefaultSpoolingTarget)
+                    ?? Settings.DefaultSpoolingTarget;
+                return $"No override - files go to the default staging folder: {staging}";
+            }
+
+            var display = SpoolPathDisplay.ToDisplayPath(Settings, target);
+            return $"Files will be moved to: {display}";
+        }
     }
 
     private void OnDestinationChanged()
     {
-        _destinationError = string.IsNullOrWhiteSpace(_target)
-            ? null
-            : IsValidDestination(_target)
-                ? null
-                : "Invalid path - remove any surrounding quotes or invalid characters.";
+        _destinationError = ValidateSubpath(_targetSubpath);
+    }
+
+    private static string? ValidateSubpath(string? subpath)
+    {
+        if (string.IsNullOrWhiteSpace(subpath))
+        {
+            return null; // empty is valid
+        }
+
+        var trimmed = subpath.Trim().Trim('"').Trim('/', '\\');
+
+        if (trimmed.Contains('"') || trimmed.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+        {
+            return "Invalid subfolder - remove quotes or invalid characters.";
+        }
+
+        if (Path.IsPathRooted(trimmed))
+        {
+            return "Use a relative subfolder (no leading slash), e.g. psx";
+        }
+
+        var segments = trimmed.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Any(s => s == ".."))
+        {
+            return "Subfolder cannot contain '..'.";
+        }
+
+        return null;
     }
 
     private void Cancel() => MudDialogInstance.Close(DialogResult.Cancel());
@@ -291,7 +378,7 @@
             {
                 Name = string.IsNullOrWhiteSpace(_name) ? null : _name.Trim(),
                 Server = string.IsNullOrWhiteSpace(_server) ? null : _server,
-                Target = string.IsNullOrWhiteSpace(_target) ? null : _target.Trim().Trim('"'),
+                Target = ResolvedTarget,
                 Filter = string.IsNullOrWhiteSpace(_filter) ? null : _filter.Trim(),
                 Strategy = _strategy,
                 SettlingTimeSeconds = _settlingTimeSeconds,

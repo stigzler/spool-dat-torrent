@@ -131,8 +131,8 @@
                     }
                     <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: center;">Seeds: @ClientSeedsText</div>
                     <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 96px; text-align: center;">Peers: @ClientPeersText</div>
-                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; width: 120px; text-align: center;">ETA: @ClientEtaText</div>
-                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; text-align: center;">Speed: @ClientSpeedText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; min-width: 160px; text-align: center;">ETA: @ClientEtaText</div>
+                    <div class="ml-2" style="flex-shrink: 0; white-space: nowrap; min-width: 96px; text-align: center;">Speed: @ClientSpeedText</div>
                 </div>
             }
             <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
@@ -337,25 +337,25 @@
         {
             // Explicit per-stream target takes precedence; otherwise the default target
             // with the torrent-name subfolder (mirrors SpoolingEngine.GetDestinationRoot).
+            string containerPath;
             if (!string.IsNullOrWhiteSpace(Stream.SpoolingTargetOverride))
             {
-                return Stream.SpoolingTargetOverride!;
+                containerPath = Stream.SpoolingTargetOverride!;
             }
-
-            if (string.IsNullOrWhiteSpace(Settings.DefaultSpoolingTarget))
+            else
             {
-                return "No destination configured (set a default in Settings)";
+                // Use the real torrent name (from the live snapshot) so the path matches what
+                // the engine actually writes. The torrent name may contain nested folder
+                // segments (e.g. "Minerva_Myrient\Redump\Sony - PlayStation"). Fall back to the
+                // friendly stream name only when no live torrent name is available.
+                string folder = !string.IsNullOrWhiteSpace(Live?.TorrentName)
+                    ? SanitizeFolderName(Live!.TorrentName)
+                    : string.IsNullOrWhiteSpace(Stream.Name) ? Stream.TorrentIdentifier : Stream.Name;
+
+                containerPath = System.IO.Path.Combine(Settings.DefaultSpoolingTarget, folder);
             }
 
-            // Use the real torrent name (from the live snapshot) so the path matches what
-            // the engine actually writes. The torrent name may contain nested folder
-            // segments (e.g. "Minerva_Myrient\Redump\Sony - PlayStation"). Fall back to the
-            // friendly stream name only when no live torrent name is available.
-            string folder = !string.IsNullOrWhiteSpace(Live?.TorrentName)
-                ? SanitizeFolderName(Live!.TorrentName)
-                : string.IsNullOrWhiteSpace(Stream.Name) ? Stream.TorrentIdentifier : Stream.Name;
-
-            return System.IO.Path.Combine(Settings.DefaultSpoolingTarget, folder);
+            return SpoolPathDisplay.ToDisplayPath(Settings, containerPath) ?? containerPath;
         }
     }
 

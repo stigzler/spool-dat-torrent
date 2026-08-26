@@ -13,10 +13,18 @@
 
     <MudGrid>
         <MudItem xs="12" md="6">
-            <MudTextField @bind-Value="_settings.DefaultSpoolingTarget"
+            <MudTextField @bind-Value="_settings.StagingHostPath"
                           @bind-Value:after="ScheduleSave"
-                          Label="Default destination folder"
-                          HelperText="A real folder path on the machine running SpoolDatTorrent where completed files are moved to. Files go into a subfolder named after the torrent. Example: C:\Spooled Output (Windows) or /mnt/pool/Media/Games/roms/unsorted (Linux). A stream with its own destination overrides this."
+                          Label="Staging host path"
+                          HelperText="Optional. The real host path mapped to the staging root (/staging-dir) in your compose file. Used only for display. Leave blank to show the container path. Example: /mnt/pool/media/bin/games/staging"
+                          Variant="Variant.Outlined" FullWidth="true" />
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudTextField @bind-Value="_settings.LibraryHostPath"
+                          @bind-Value:after="ScheduleSave"
+                          Label="Library host path"
+                          HelperText="@LibraryHostPathHelperText"
+                          Disabled="@(!_libraryAvailable)"
                           Variant="Variant.Outlined" FullWidth="true" />
         </MudItem>
         <MudItem xs="12" md="6">
@@ -85,11 +93,17 @@
     private int _settlingTimeSeconds;
     private int _serverRetryCount;
     private CancellationTokenSource? _debounce;
+    private bool _libraryAvailable;
+
+    private string LibraryHostPathHelperText => _libraryAvailable
+        ? "Optional. The real host path mapped to the library root (/library-dir) in your compose file. Used only for display (text replacement) - it does not create or require the mount. Leave blank to show the container path. Example: /mnt/pool/media/games/roms"
+        : "The library destination is not available because /library-dir has not been set in your compose file. Add a volume mount (e.g. - /mnt/pool/media/games/roms:/library-dir) to enable it.";
 
     protected override void OnInitialized()
     {
         _pollInterval = _settings.PollIntervalSeconds;
         _settlingTimeSeconds = _settings.SettlingTimeSeconds;
+        _libraryAvailable = SpoolMountDetection.IsLibraryAvailable(_settings);
         _serverRetryCount = _settings.ServerRetryCount;
     }
 

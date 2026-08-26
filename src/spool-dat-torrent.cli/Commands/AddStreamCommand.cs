@@ -94,6 +94,7 @@ namespace SpoolDatTorrent.Cli.Commands
             var addCommand = new Core.Commands.AddStreamCommand(
                 serviceProvider.GetRequiredService<IServiceScopeFactory>(),
                 serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<GlobalSpoolSettings>>());
+
             var stream = await addCommand.ExecuteAsync(
                 torrentIdentifier: calculatedHash,
                 datFilePath: settings.DatPath!,

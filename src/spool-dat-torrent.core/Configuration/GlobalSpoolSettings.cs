@@ -19,6 +19,28 @@ namespace SpoolDatTorrent.Core.Configuration
         public string DefaultSpoolingTarget { get; set; } = string.Empty;
 
         /// <summary>
+        /// Optional library root: the final destination for files needing no further
+        /// processing. Empty means the library destination is not offered (staging-only
+        /// setup). When set, it is typically the container path "/library-dir" (or a local
+        /// path such as "C:\Spooled\library" for non-Docker development).
+        /// </summary>
+        public string LibraryDir { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Display-only host path for the staging root. Used by the web UI to show the
+        /// user's real filesystem path instead of the container path. Never used for file
+        /// operations. Empty means the container path is shown as-is.
+        /// </summary>
+        public string StagingHostPath { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Display-only host path for the library root. Used by the web UI to show the
+        /// user's real filesystem path instead of the container path. Never used for file
+        /// operations. Empty means the container path is shown as-is.
+        /// </summary>
+        public string LibraryHostPath { get; set; } = string.Empty;
+
+        /// <summary>
         /// Password required to log in to the web UI. Single-admin, LAN-only use; compared
         /// as plaintext on login. Empty means the web UI is not protected.
         /// </summary>
@@ -30,7 +52,7 @@ namespace SpoolDatTorrent.Core.Configuration
 
         /// <summary>Time to wait after pausing before moving files, in seconds.</summary>
         [Range(1, 480)]
-        public int SettlingTimeSeconds { get; set; } = 5;
+        public int SettlingTimeSeconds { get; set; } = 3;
 
         /// <summary>
         /// Directory where per-stream copies of the .torrent and .dat files are cached,
