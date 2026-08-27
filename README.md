@@ -125,17 +125,14 @@ SpoolDatTorrent cancel 1
 - `TorrentServers` — one entry per BitTorrent client.
 - `SpoolingCapGb` is the max batch size;
 - `DefaultSpoolingTarget` — where completed files are moved by default.
-
-below).
 - `PollIntervalSeconds` — how often the engine polls the client.
 - `SettlingTimeSeconds` — wait after pausing before moving files (lets the client finish writing).
 - `ServerRetryCount` — consecutive failures before a stream is marked errored.
 - `SpoolingCapSafetyMarginPercent` — headroom reserved for BitTorrent "boundary piece" overhead (5-10% normally good).
----
 
 ## Usage — Web UI
 
-### Installation (Docker Compose)
+### Installation (Example Docker Compose)
 
 ```yaml
 services:
@@ -143,8 +140,8 @@ services:
     image: ghcr.io/stigzler/spool-dat-torrent:latest
     container_name: spooldattorrent
     environment:
-      - SDT_ADMIN_PASSWORD=admin
-      - SDT_SECRET_KEY=nmUgKjZjUws649H1aZC5
+      - SDT_ADMIN_PASSWORD=[your password here]
+      - SDT_SECRET_KEY=[any random hash here]
       - SDT_DEBUG_LOG=0
       - TZ=Europe/London
     ports:
@@ -254,8 +251,6 @@ You can cancel a stream from the Streams page (or `cancel` / `cancel-all` in the
 
 > **Three important takeaways:**
 >
-
 > 1. **Cancelling does NOT remove any ROMs from the destination folder.** Files already moved stay put.
-
 > 2. **It DOES remove the torrent from your BitTorrent client** (and its scratch files).
 > 3. Re-adding the same torrent later (even with a different DAT) will **resume** spooling that torrent to the configured destination/options.
