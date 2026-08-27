@@ -1,3 +1,4 @@
+@using SpoolDatTorrent.Core.Helpers
 @using SpoolDatTorrent.Core.Services
 
 <MudCard Elevation="2" Class="d-flex flex-column h-100">
@@ -73,14 +74,19 @@
 
         try
         {
+            Logger.Log($"🧪 User testing server '{Name}'...");
+            StartupSummary.LogServerDetails(Name, Profile);
+
             var httpClient = HttpClientFactory.CreateClient();
             var client = new QBitClient(httpClient, new GlobalSpoolSettings(), Profile);
 
             var ok = await client.AuthenticateAsync();
+            Logger.Log(ok ? $"✅ Server test succeeded for '{Name}' ({Profile.Host})." : $"❌ Server test failed for '{Name}' ({Profile.Host}).");
             Snackbar.Add(ok ? $"Connected to '{Profile.Host}'." : $"Authentication failed for '{Profile.Host}'.", ok ? Severity.Success : Severity.Error);
         }
         catch (Exception ex)
         {
+            Logger.LogError($"Server test failed for '{Name}' ({Profile.Host}): {ex.Message}");
             Snackbar.Add($"Test failed: {ex.Message}", Severity.Error);
         }
         finally

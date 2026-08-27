@@ -1,6 +1,7 @@
 @page "/settings"
 @attribute [Authorize]
 @using SpoolDatTorrent.Core.Configuration
+@using SpoolDatTorrent.Core.Helpers
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 
@@ -157,5 +158,7 @@
     {
         // Silent autosave: persist without a toast.
         SettingsManager.SaveSettings(_settings);
+        Logger.Log("⚙️ User changed global settings.");
+        StartupSummary.LogGlobalSettings(_settings);
     }
 }

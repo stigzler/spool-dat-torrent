@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SpoolDatTorrent.Core.Data;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Models;
 
 namespace SpoolDatTorrent.Core.Commands
@@ -43,6 +44,7 @@ namespace SpoolDatTorrent.Core.Commands
             }
 
             await db.SaveChangesAsync(cancellationToken);
+            Logger.Log($"⏸️ Paused all streams ({ids.Count} stream(s)).");
             return ids;
         }
     }

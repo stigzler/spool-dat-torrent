@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
 using SpoolDatTorrent.Core.DTOs;
+using SpoolDatTorrent.Core.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -90,6 +91,7 @@ namespace SpoolDatTorrent.Core.Commands
 
             SettingsManager.SaveSettings(_settings);
 
+            Logger.Log($"🗑️ Deleted server profile '{profileName}'.");
             return new DeleteServerProfileResult
             {
                 Success = true,

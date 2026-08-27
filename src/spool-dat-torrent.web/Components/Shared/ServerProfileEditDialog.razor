@@ -1,6 +1,8 @@
+@using SpoolDatTorrent.Core.Helpers
 @using SpoolDatTorrent.Core.Services
 @inject IHttpClientFactory HttpClientFactory
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <MudDialog>
     <DialogContent>
@@ -25,11 +27,14 @@
                               Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
             <MudItem xs="12" md="6">
-                <MudTextField @bind-Value="_capText"
-                              @bind-Value:after="ScheduleSave"
-                              Label="Spooling Cap (GB)"
-                              HelperText="Maximum total size of files downloaded in a single batch for this server."
-                              Variant="Variant.Outlined" FullWidth="true" />
+                <MudNumericField T="long"
+                                 @bind-Value="Profile.SpoolingCapGb"
+                                 @bind-Value:after="ScheduleSave"
+                                 Label="Spooling Cap (GB)"
+                                 HelperText="Maximum total size of files downloaded in a single batch for this server."
+                                 Min="1"
+                                 Class="sdt-numeric"
+                                 Variant="Variant.Outlined" FullWidth="true" />
             </MudItem>
             <MudItem xs="12" md="6">
                 <MudTextField @bind-Value="Profile.Username"
@@ -116,11 +121,28 @@
 
     private string _name = string.Empty;
     private string _currentName = string.Empty;
-    private string _capText = string.Empty;
-    private bool _capInitialized;
     private bool _isTesting;
     private bool _showApiKey;
     private CancellationTokenSource? _debounce;
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // Block non-digit keys in the Spooling Cap field (class "sdt-numeric") so only
+        // whole numbers can be typed. MudBlazor's numeric field only sanitizes on blur.
+        _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Shared/ServerProfileEditDialog.razor.js");
+        await _module.InvokeVoidAsync("initNumericGuard");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
 
     private void ToggleApiKeyVisibility()
     {
@@ -131,20 +153,10 @@
     {
         _currentName = ProfileName;
         _name = ProfileName;
-        if (!_capInitialized)
-        {
-            _capText = Profile.SpoolingCapGb.ToString();
-            _capInitialized = true;
-        }
     }
 
     private void ScheduleSave()
     {
-        if (long.TryParse(_capText, out var cap) && cap >= 0)
-        {
-            Profile.SpoolingCapGb = cap;
-        }
-
         _debounce?.Cancel();
         _debounce = new CancellationTokenSource();
         var token = _debounce.Token;
@@ -196,14 +208,19 @@
 
         try
         {
+            Logger.Log($"🧪 User testing server '{ProfileName}'...");
+            StartupSummary.LogServerDetails(ProfileName, Profile);
+
             var httpClient = HttpClientFactory.CreateClient();
             var client = new QBitClient(httpClient, new GlobalSpoolSettings(), Profile);
 
             var ok = await client.AuthenticateAsync();
+            Logger.Log(ok ? $"✅ Server test succeeded for '{ProfileName}' ({Profile.Host})." : $"❌ Server test failed for '{ProfileName}' ({Profile.Host}).");
             Snackbar.Add(ok ? $"Connected to '{Profile.Host}'." : $"Authentication failed for '{Profile.Host}'.", ok ? Severity.Success : Severity.Error);
         }
         catch (Exception ex)
         {
+            Logger.LogError($"Server test failed for '{ProfileName}' ({Profile.Host}): {ex.Message}");
             Snackbar.Add($"Test failed: {ex.Message}", Severity.Error);
         }
         finally

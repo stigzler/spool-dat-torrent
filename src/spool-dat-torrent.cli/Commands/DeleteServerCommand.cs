@@ -28,7 +28,7 @@ namespace SpoolDatTorrent.Cli.Commands
             }
 
             AnsiConsole.MarkupLine($"[red]{Markup.Escape(result.Message)}[/]");
-            Logger.Log($"[Delete] {result.Message}");
+            Logger.LogError(result.Message);
             return 1;
         }
     }

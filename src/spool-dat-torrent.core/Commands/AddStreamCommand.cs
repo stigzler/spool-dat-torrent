@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Models;
 
 namespace SpoolDatTorrent.Core.Commands
@@ -57,6 +58,7 @@ namespace SpoolDatTorrent.Core.Commands
 
             if (existing != null)
             {
+                Logger.Log($"📝 Updating stream '{existing.Name}' (torrent {torrentIdentifier}).");
                 if (!string.IsNullOrWhiteSpace(name)) existing.Name = name;
                 existing.DatFilePath = datFilePath;
                 existing.SpoolingTargetOverride = spoolingTargetOverride;
@@ -84,6 +86,7 @@ namespace SpoolDatTorrent.Core.Commands
                 if (!string.IsNullOrWhiteSpace(dePriorityTerms)) existing.DePriorityTerms = dePriorityTerms;
 
                 await db.SaveChangesAsync(cancellationToken);
+                Logger.Log($"📝 Updated stream '{existing.Name}': {FormatSetupDetails(existing)}");
                 return existing;
             }
 
@@ -120,7 +123,20 @@ namespace SpoolDatTorrent.Core.Commands
 
             db.Streams.Add(stream);
             await db.SaveChangesAsync(cancellationToken);
+            Logger.Log($"➕ Added stream '{stream.Name}': {FormatSetupDetails(stream)}");
+            StartupSummary.LogServerDetails(resolvedServer, _settings.TorrentServers[resolvedServer]);
+            StartupSummary.LogGlobalSettings(_settings);
             return stream;
+        }
+
+        private static string FormatSetupDetails(TorrentStreamItem s)
+        {
+            return $"torrent={s.TorrentIdentifier}, server='{s.ServerProfileId}', dat='{s.DatFilePath}', " +
+                   $"target='{s.SpoolingTargetOverride ?? "(default)"}', strategy={s.Strategy}, " +
+                   $"filter='{s.FileFilter}', settling={s.SettlingTimeSeconds?.ToString() ?? "default"}s, " +
+                   $"priorityTerms='{s.PriorityTerms}', dePriorityTerms='{s.DePriorityTerms}', " +
+                   $"torrentPath='{s.OriginalTorrentPath ?? "(none)"}', magnet='{s.OriginalMagnet ?? "(none)"}', " +
+                   $"datPath='{s.OriginalDatPath ?? "(none)"}'";
         }
 
         private static async Task<int> GetLowestFreeStreamIdAsync(SpoolDbContext db, CancellationToken cancellationToken)

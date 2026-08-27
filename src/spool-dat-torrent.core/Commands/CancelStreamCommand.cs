@@ -86,7 +86,7 @@ namespace SpoolDatTorrent.Core.Commands
             }
             catch (Exception ex)
             {
-                Logger.Log($"[Error] Failed to remove torrent from server '{profileName}': {ex.Message}");
+                Logger.LogError($"Failed to remove torrent from server '{profileName}': {ex.Message}");
             }
 
             // 3. Delete the cached source files for this stream.
@@ -95,6 +95,7 @@ namespace SpoolDatTorrent.Core.Commands
             // 4. Delete the stream row from the database.
             db.Streams.Remove(stream);
             await db.SaveChangesAsync(cancellationToken);
+            Logger.Log($"🗑️ Cancelled stream '{stream.Name}'.");
             return true;
         }
     }

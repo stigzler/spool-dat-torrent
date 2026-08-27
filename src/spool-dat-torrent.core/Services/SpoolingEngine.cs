@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -70,6 +70,10 @@ namespace SpoolDatTorrent.Core.Services
         // A fresh engine = a restart, so errored streams are retried once at startup.
         private bool _hasReactivatedOnStart;
 
+        // Signature of the last batch allocated per torrent (file count + footprint). Used
+        // to avoid logging "Allocated batch" on every poll cycle when nothing changed.
+        private readonly ConcurrentDictionary<string, string> _lastAllocatedBatch = new(StringComparer.OrdinalIgnoreCase);
+
         public SpoolingEngine(
             IServiceScopeFactory scopeFactory,
             IBitTorrentClientFactory clientFactory,
@@ -124,7 +128,7 @@ namespace SpoolDatTorrent.Core.Services
                 // Check if the profile exists in settings to get the cap
                 if (!_settings.TorrentServers.TryGetValue(profileName, out var profileSettings))
                 {
-                    Console.WriteLine($"Skipping unknown profile: {profileName}");
+                    Logger.LogWarning($"Skipping unknown server profile '{profileName}'.");
                     continue;
                 }
 
@@ -167,7 +171,7 @@ namespace SpoolDatTorrent.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    Logger.Log($"[Error] Client '{profileName}' failed: {ex}");
+                    Logger.LogError($"BitTorrent client '{profileName}' failed: {ex.Message}");
                     await HandleServerFailureAsync(dbContext, streamsOnThisServer, profileName, $"error: {ex.Message}", cancellationToken);
                 }
             }
@@ -179,8 +183,10 @@ namespace SpoolDatTorrent.Core.Services
 
         private void LogStatus(string message)
         {
-            // Always write to the log file.
-            Logger.Log(message, echoToConsole: false);
+            // Status messages are per-cycle and would spam the tidy standard log, so they
+            // are written at debug level (available for troubleshooting) while the UI still
+            // shows them live via the reporter.
+            Logger.LogDebug(message);
 
             // Attribute the message to the currently-processed stream (if any) so a
             // dashboard can show what a given stream is doing right now. Also push it into
@@ -200,11 +206,6 @@ namespace SpoolDatTorrent.Core.Services
                 // Route through the reporter so a live display can render it cleanly.
                 // Writing to the raw console here would corrupt Spectre's Live output.
                 _progressReporter.ReportStatus(message);
-            }
-            else
-            {
-                // No live display attached (e.g. Docker service): echo to the console.
-                Console.WriteLine(message);
             }
         }
 
@@ -292,7 +293,7 @@ namespace SpoolDatTorrent.Core.Services
                 {
                     stream.Status = StreamLifecycleStatus.Error;
                     changed = true;
-                    Logger.Log($"[Error] Marked stream '{stream.Name}' as Error because server '{profileName}' is unreachable.");
+                    Logger.LogError($"Marked stream '{stream.Name}' as Error because server '{profileName}' is unreachable.");
                 }
             }
 
@@ -440,6 +441,7 @@ namespace SpoolDatTorrent.Core.Services
         // Used by Web/Docker: Runs continuously in the background
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            Logger.Log("🔄 Spooling engine started. Polling every " + _settings.PollIntervalSeconds + "s.");
             await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
@@ -450,10 +452,42 @@ namespace SpoolDatTorrent.Core.Services
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"SpoolingEngine encountered an error: {ex.Message}");
+                    Logger.LogError($"SpoolingEngine encountered an error: {ex.Message}");
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(_settings.PollIntervalSeconds), stoppingToken);
+            }
+
+            // Log which streams were still active so the operator can see what was in flight
+            // when the container stopped. Streams are left Active (stateless-by-design) so
+            // they resume automatically on restart.
+            await LogActiveStreamsOnShutdownAsync(stoppingToken);
+            Logger.Log("🛑 Spooling engine stopped.");
+        }
+
+        public async Task LogActiveStreamsOnShutdownAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<SpoolDbContext>();
+                var active = await dbContext.Streams
+                    .Where(s => s.Status == StreamLifecycleStatus.Active)
+                    .OrderBy(s => s.Id)
+                    .ToListAsync(cancellationToken);
+
+                if (active.Count == 0)
+                {
+                    Logger.Log("ℹ️ No active streams at shutdown.");
+                    return;
+                }
+
+                var summary = active.Select(s => $"#{s.Id} '{s.Name}' ({s.MovedCount}/{s.TotalCount} moved)");
+                Logger.Log($"ℹ️ {active.Count} active stream(s) at shutdown (will resume on restart): {string.Join("; ", summary)}");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"Could not list active streams at shutdown: {ex.Message}");
             }
         }
 
@@ -476,6 +510,7 @@ namespace SpoolDatTorrent.Core.Services
                             CancellationToken cancellationToken)
         {
             _currentStream = stream;
+            Logger.LogDebug($"Processing stream '{stream.Name}' (id {stream.Id}) on server '{serverProfileName}': strategy={stream.Strategy}, cap={allocatedCapBytes.ToGigabytes():0.#} GB, priorityTerms='{stream.PriorityTerms}', dePriorityTerms='{stream.DePriorityTerms}'.");
             var desiredGames = await GetDesiredGamesAsync(GetActiveDatPath(stream), cancellationToken);
 
             // RECOVERY: if the torrent is missing from the client (e.g. the app was closed
@@ -594,8 +629,8 @@ namespace SpoolDatTorrent.Core.Services
             LogStatus($"Awaiting completion of current download batch...");
             if (downloading.Any())
             {
-                var inProgress = downloading.Select(f => $"{Path.GetFileName(f.Name)} ({f.Progress:P})");
-                Logger.Log($"[Spooling] Batch active. Waiting for {downloading.Count} files: {string.Join(", ", inProgress)}", echoToConsole: false);
+                var inProgress = downloading.Select(f => $"{f.Name} ({f.Progress:P})");
+                Logger.LogDebug($"[Spooling] Batch active. Waiting for {downloading.Count} files: {string.Join(", ", inProgress)}");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -653,6 +688,7 @@ namespace SpoolDatTorrent.Core.Services
                 {
                     // Progress was made — reset the drain-failure counter.
                     _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
+                    Logger.Log($"🚛 Moved {copiedIndices.Count} file(s) for stream '{stream.Name}'. Rebuilding torrent for next batch... Files: {FormatFileCsv(torrentFiles, copiedIndices)}");
                     LogStatus($"Moved {copiedIndices.Count} files. Rebuilding torrent for next batch...");
                     await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
                 }
@@ -730,16 +766,18 @@ namespace SpoolDatTorrent.Core.Services
 
             if (!verified)
             {
+                Logger.LogError($"Completion verification failed for stream '{stream.Name}': {missing.Count} file(s) missing or wrong size at destination.");
                 LogStatus($"Completion verification failed: {missing.Count} file(s) missing or wrong size at destination.");
                 foreach (var name in missing.Take(10))
                 {
-                    Logger.Log($"[Verify] {name}");
+                    Logger.LogDebug($"[Verify] {name}");
                 }
                 stream.Status = StreamLifecycleStatus.Error;
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
 
+            Logger.Log($"✅ Spooling complete for stream '{stream.Name}' ({alreadyMoved.Count} files).");
             LogStatus($"All files verified and in destination folder. Stream ({stream.Id}) '{stream.Name}' completed!");
             stream.Status = StreamLifecycleStatus.Completed;
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -781,7 +819,7 @@ namespace SpoolDatTorrent.Core.Services
 
                 if (!info.Exists || info.Length != file.Size)
                 {
-                    problems.Add($"{Path.GetFileName(file.Name)} (expected {file.Size}, actual {(info.Exists ? info.Length : 0)})");
+                    problems.Add($"{file.Name} (expected {file.Size}, actual {(info.Exists ? info.Length : 0)})");
                 }
             }
 
@@ -954,6 +992,21 @@ namespace SpoolDatTorrent.Core.Services
             return false;
         }
 
+        /// <summary>
+        /// Build a comma-separated list of file names (basename only) for the given indices,
+        /// used to annotate "Moved"/"Allocated" log lines with the actual files involved.
+        /// </summary>
+        private static string FormatFileCsv(IReadOnlyList<TorrentFileDto> files, IEnumerable<int> indices)
+        {
+            var indexSet = new HashSet<int>(indices);
+            var names = files
+                .Where(f => indexSet.Contains(f.Index))
+                .Select(f => Path.GetFileName(f.Name))
+                .ToList();
+
+            return names.Count == 0 ? "(none)" : string.Join(", ", names);
+        }
+
         private long ApplySafetyMargin(long capBytes)
         {
             // Reserve a percentage of the cap for BitTorrent "boundary piece" overhead.
@@ -1080,6 +1133,18 @@ namespace SpoolDatTorrent.Core.Services
             if (filesToSkip.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToSkip, 0, cancellationToken);
             if (filesToDownload.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToDownload, 1, cancellationToken);
 
+            // Only log when the batch actually changes. The engine re-runs allocation every
+            // poll cycle (re-applying priorities), so logging unconditionally would spam the
+            // standard log with identical "Allocated batch" lines.
+            string signature = $"{filesToDownload.Count}|{currentFootprint}";
+            if (_lastAllocatedBatch.TryGetValue(stream.TorrentIdentifier, out var previous) && previous == signature)
+            {
+                await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
+                return;
+            }
+
+            _lastAllocatedBatch[stream.TorrentIdentifier] = signature;
+            Logger.Log($"📦 Allocated batch of {filesToDownload.Count} file(s) ({currentFootprint.ToGigabytes():0.#} GB) for stream '{stream.Name}'. Resuming download... Files: {FormatFileCsv(torrentFiles, filesToDownload)}");
             await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
         }
 

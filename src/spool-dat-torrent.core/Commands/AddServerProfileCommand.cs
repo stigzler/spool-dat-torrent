@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.DTOs;
+using SpoolDatTorrent.Core.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -44,6 +45,8 @@ namespace SpoolDatTorrent.Core.Commands
 
             SettingsManager.SaveSettings(_settings);
 
+            Logger.Log($"➕ Created server profile '{profileName}'.");
+            StartupSummary.LogServerDetails(profileName, _settings.TorrentServers[profileName]);
             return Task.FromResult(new AddServerProfileResult
             {
                 Success = true,

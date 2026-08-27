@@ -21,8 +21,6 @@ namespace SpoolDatTorrent.Cli.Commands
     {
         protected override async Task<int> ExecuteAsync(CommandContext context, SpoolCommandSettings settings, CancellationToken cancellationToken)
         {
-            Logger.Clear();
-
             AnsiConsole.MarkupLine($"[green]Adding Torrent:[/] [[{Markup.Escape(Path.GetFileName(settings.Torrent!))}]]");
             AnsiConsole.MarkupLine($"[green]DAT Filter:[/] [[{Markup.Escape(Path.GetFileName(settings.DatPath!))}]]");
 
@@ -38,7 +36,7 @@ namespace SpoolDatTorrent.Cli.Commands
             {
                 var error = $"Server profile '{resolvedServer}' does not exist. Use 'spool list' to see available profiles, or 'spool add-server' to create one.";
                 AnsiConsole.MarkupLine($"[red]{Markup.Escape(error)}[/]");
-                Logger.Log($"[Error] {error}");
+                Logger.LogError(error);
                 return 1;
             }
 

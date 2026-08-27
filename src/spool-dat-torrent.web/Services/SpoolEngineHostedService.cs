@@ -67,6 +67,20 @@ namespace SpoolDatTorrent.Web.Services
                     break;
                 }
             }
+
+            // Log which streams were still active so the operator can see what was in flight
+            // when the container stopped. Streams are left Active (stateless-by-design) so
+            // they resume automatically on restart.
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var engine = scope.ServiceProvider.GetRequiredService<SpoolingEngine>();
+                await engine.LogActiveStreamsOnShutdownAsync(CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not log active streams at shutdown");
+            }
         }
     }
 }

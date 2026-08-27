@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using MudBlazor.Services;
 using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.Data;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Interfaces;
 using SpoolDatTorrent.Core.Progress;
 using SpoolDatTorrent.Core.Services;
@@ -20,6 +21,30 @@ namespace SpoolDatTorrent.Web
     {
         public static void Main(string[] args)
         {
+            // Fail-fast: log any unhandled exception (with full stack trace) to the file and
+            // stdout so docker logs capture it, then let the process exit so the container
+            // orchestrator's restart policy brings it back cleanly. Running on after a fatal
+            // error risks a corrupted state (half-written DB, deadlocks, etc.).
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                var ex = e.ExceptionObject as Exception;
+                Logger.LogError($"Unhandled exception (terminating): {(ex?.Message ?? "unknown")}");
+                if (ex != null)
+                {
+                    Logger.LogError(ex.StackTrace ?? "(no stack trace)");
+                }
+            };
+
+            // A fire-and-forget task that throws would otherwise silently kill the process.
+            // Log it and mark it observed so the app can continue.
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                Logger.LogError($"Unobserved task exception: {e.Exception.Message}");
+                Logger.LogError(e.Exception.StackTrace ?? "(no stack trace)");
+                e.SetObserved();
+            };
+
+            Logger.Log("🚀 SpoolDatTorrent web host starting...");
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
@@ -97,6 +122,12 @@ namespace SpoolDatTorrent.Web
             {
                 var db = scope.ServiceProvider.GetRequiredService<SpoolDatTorrent.Core.Data.SpoolDbContext>();
                 db.Database.Migrate();
+
+                // Emit a startup summary: global settings, every server (secrets redacted),
+                // and every tracked stream with its status — the context needed to read the
+                // log that follows.
+                var streams = db.Streams.AsNoTracking().OrderBy(s => s.Id).ToList();
+                StartupSummary.Log(settings, streams);
             }
 
             // Configure the HTTP request pipeline.
@@ -145,6 +176,12 @@ namespace SpoolDatTorrent.Web
             app.MapStaticAssets();
             app.MapRazorComponents<App>()
                 .AddInteractiveServerRenderMode();
+
+            // Log the listening address so Docker users can confirm the app is up and where.
+            app.Lifetime.ApplicationStarted.Register(() =>
+                Logger.Log("🚀 SpoolDatTorrent web UI is ready and waiting for connections."));
+            app.Lifetime.ApplicationStopping.Register(() =>
+                Logger.Log("🛑 SpoolDatTorrent web host is shutting down..."));
 
             app.Run();
         }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SpoolDatTorrent.Core.Data;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Models;
 
 namespace SpoolDatTorrent.Core.Commands
@@ -59,6 +60,7 @@ namespace SpoolDatTorrent.Core.Commands
         {
             stream.Status = status;
             await db.SaveChangesAsync(cancellationToken);
+            Logger.Log($"🔀 Set stream '{stream.Name}' status to {status}.");
             return true;
         }
     }

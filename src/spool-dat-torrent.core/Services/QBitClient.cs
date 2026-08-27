@@ -1,5 +1,6 @@
 ﻿using SpoolDatTorrent.Core.Configuration;
 using SpoolDatTorrent.Core.DTOs;
+using SpoolDatTorrent.Core.Helpers;
 using SpoolDatTorrent.Core.Interfaces;
 using System;
 using System.Collections.Generic;
@@ -160,9 +161,14 @@ namespace SpoolDatTorrent.Core.Services
             // (and on CLI re-runs), so treat it as a no-op rather than throwing.
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
+                Logger.LogDebug($"AddTorrent: HTTP 409 (already exists) for '{Path.GetFileName(torrentPathOrMagnet)}'.");
                 return;
             }
 
+            if (!response.IsSuccessStatusCode)
+            {
+                Logger.LogError($"qBittorrent add torrent failed: HTTP {(int)response.StatusCode}.");
+            }
             response.EnsureSuccessStatusCode();
         }
 
@@ -209,6 +215,10 @@ namespace SpoolDatTorrent.Core.Services
                 var response = await _httpClient.SendAsync(request, cancellationToken);
 
                 // If we get a 200 OK, the API key works. If we get a 403 Forbidden, it's invalid.
+                if (!response.IsSuccessStatusCode)
+                {
+                    Logger.LogError($"qBittorrent API key authentication failed ({_profile.Host}): HTTP {(int)response.StatusCode}.");
+                }
                 return response.IsSuccessStatusCode;
             }
 
@@ -229,6 +239,7 @@ namespace SpoolDatTorrent.Core.Services
                 return true;
             }
 
+            Logger.LogError($"qBittorrent login failed ({_profile.Host}): HTTP {(int)authResponse.StatusCode}.");
             return false;
         }
 
@@ -323,7 +334,7 @@ namespace SpoolDatTorrent.Core.Services
                 await Task.Delay(1000, cancellationToken);
             }
 
-            Console.WriteLine($"[Warning] Torrent '{torrentId}' still present after 60s; re-add may conflict.");
+            Logger.LogWarning($"Torrent '{torrentId}' still present after 60s; re-add may conflict.");
         }
 
         public async Task<bool> TorrentExistsAsync(string torrentId, CancellationToken cancellationToken = default)

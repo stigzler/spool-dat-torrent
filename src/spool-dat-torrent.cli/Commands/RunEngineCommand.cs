@@ -14,8 +14,6 @@ namespace SpoolDatTorrent.Cli.Commands
     {
         protected override async Task<int> ExecuteAsync(CommandContext context, MonitorSettings settings, CancellationToken cancellationToken)
         {
-            Logger.Clear();
-
             var serviceProvider = CliServiceProvider.Build();
 
             // List server profiles and streams before starting the monitor.

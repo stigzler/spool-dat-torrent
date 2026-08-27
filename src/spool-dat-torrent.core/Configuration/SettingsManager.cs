@@ -1,4 +1,5 @@
-﻿using System;
+﻿using SpoolDatTorrent.Core.Helpers;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -193,8 +194,8 @@ namespace SpoolDatTorrent.Core.Configuration
             var json = JsonSerializer.Serialize(defaultSettings, options);
 
             File.WriteAllText(settingsPath, json);
-            Console.WriteLine($"[Init] Created default configuration file at: {settingsPath}");
-            Console.WriteLine("[Init] Please update your server configuration and restart.");
+            Logger.Log($"⚙️ Created default configuration file at: {settingsPath}");
+            Logger.Log("⚙️ Please update your server configuration and restart.");
             Environment.Exit(0);
         }
 

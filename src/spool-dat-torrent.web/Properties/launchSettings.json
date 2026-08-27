@@ -20,7 +20,8 @@
         "environmentVariables": {
           "ASPNETCORE_ENVIRONMENT": "Development",
           "SDT_SECRET_KEY": "9AwJVcyThaEyqnM4vgkm",
-          "SDT_ADMIN_PASSWORD": "astraastra"
+          "SDT_ADMIN_PASSWORD": "astraastra",
+          "SDT_DEBUG_LOG": "0"
         }
       }
     }

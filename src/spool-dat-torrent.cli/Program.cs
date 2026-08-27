@@ -19,6 +19,32 @@ namespace SpoolDatTorrent.Cli
     {
         static async Task<int> Main(string[] args)
         {
+            // Fail-fast: log any unhandled exception (with full stack trace) to the log file,
+            // then let the process exit. The CLI is a short-lived invocation, so a fatal error
+            // should surface clearly rather than being swallowed.
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                var ex = e.ExceptionObject as Exception;
+                Logger.LogError($"Unhandled exception (terminating): {(ex?.Message ?? "unknown")}");
+                if (ex != null)
+                {
+                    Logger.LogError(ex.StackTrace ?? "(no stack trace)");
+                }
+            };
+
+            // A fire-and-forget task that throws would otherwise silently kill the process.
+            // Log it and mark it observed so the app can continue.
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                Logger.LogError($"Unobserved task exception: {e.Exception.Message}");
+                Logger.LogError(e.Exception.StackTrace ?? "(no stack trace)");
+                e.SetObserved();
+            };
+
+            // Spectre.Console owns the console; raw logger writes would corrupt its live
+            // display, so the logger writes to the file only in the CLI.
+            Logger.EchoToConsole = false;
+
             // 1. Trigger config creation if missing
             SettingsManager.EnsureDefaultSettingsExist();
 

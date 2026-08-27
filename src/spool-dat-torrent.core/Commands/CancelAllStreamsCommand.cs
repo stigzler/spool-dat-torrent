@@ -60,7 +60,7 @@ namespace SpoolDatTorrent.Core.Commands
                 catch (Exception ex)
                 {
                     // Log and continue so other servers are still cancelled.
-                    Logger.Log($"[Error] Failed to cancel torrents on server '{profileName}': {ex.Message}");
+                    Logger.LogError($"Failed to cancel torrents on server '{profileName}': {ex.Message}");
                 }
             }
 
@@ -77,6 +77,7 @@ namespace SpoolDatTorrent.Core.Commands
             db.Streams.RemoveRange(allStreams);
             await db.SaveChangesAsync(cancellationToken);
 
+            Logger.Log($"🗑️ Cancelled all streams ({removed} torrent(s) removed).");
             return removed;
         }
     }

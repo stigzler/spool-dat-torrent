@@ -60,7 +60,7 @@ namespace SpoolDatTorrent.Cli.Commands
                     {
                         // Never let an unexpected engine error silently kill the background
                         // task; log it and continue polling so the UI keeps rendering.
-                        Logger.Log($"[Error] Engine evaluation failed: {ex}");
+                        Logger.LogError($"Engine evaluation failed: {ex.Message}");
                         reporter.ReportStatus($"Engine error: {ex.Message}");
                     }
 
