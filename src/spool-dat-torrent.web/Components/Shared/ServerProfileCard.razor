@@ -1,7 +1,7 @@
 @using SpoolDatTorrent.Core.Helpers
 @using SpoolDatTorrent.Core.Services
 
-<MudCard Elevation="2" Class="d-flex flex-column h-100">
+<MudCard Elevation="2" Class="d-flex flex-column h-100 me-2">
     <MudCardHeader>
         <MudCardHeaderContent>
             <MudStack Row="true" AlignItems="AlignItems.Center">
@@ -30,7 +30,10 @@
             <div class="flex-grow-1"></div>
             @if (IsInUse)
             {
-                <MudText Typo="Typo.caption" Color="Color.Warning" Style="white-space: nowrap;">In use by @InUseStreamCount stream(s)</MudText>
+                <div class="d-flex align-items-center me-2">
+                    <MudIcon Icon="@Icons.Material.Filled.DoNotDisturb" Size="Size.Small" Color="Color.Warning" Class="me-1" />
+                    <MudText Typo="Typo.caption" Color="Color.Warning" Style="white-space: nowrap;">In use by @InUseStreamCount stream(s)</MudText>
+                </div>
             }
         </div>
     </MudCardActions>
