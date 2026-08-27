@@ -13,7 +13,7 @@
     <None Include="$(MSBuildThisFileDirectory)docs\draftUserGuide.md" />
     <None Include="$(MSBuildThisFileDirectory)docs\ai-docs\progressBarHeightIssue.md" />
     <None Include="$(MSBuildThisFileDirectory)docs\ai-docs\PROJECT_KNOWLEDGE_BASE.md" />
-    <None Include="$(MSBuildThisFileDirectory)docs\META_FILES_GUIDE.md" />
+    <None Include="$(MSBuildThisFileDirectory)docs\metafiles-guide.md" />
     <None Include="$(MSBuildThisFileDirectory)docs\wireframes\MainPageAndStreams.md" />
   </ItemGroup>
   <ItemGroup>
