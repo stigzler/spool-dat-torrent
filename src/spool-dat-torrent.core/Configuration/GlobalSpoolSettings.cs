@@ -46,7 +46,7 @@ namespace SpoolDatTorrent.Core.Configuration
 
         /// <summary>Time to wait after pausing before moving files, in seconds.</summary>
         [Range(1, 480)]
-        public int SettlingTimeSeconds { get; set; } = 3;
+        public int SettlingTimeSeconds { get; set; } = 5;
 
         /// <summary>
         /// Directory where per-stream copies of the .torrent and .dat files are cached,
