@@ -1,26 +1,42 @@
 using System;
-using System.Collections.Generic;
-using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SpoolDatTorrent.Core.Configuration
 {
     /// <summary>
-    /// Central registry of supported BitTorrent client types. Used by the web UI to
-    /// populate the Client Type dropdown and referenced when instantiating a client.
-    /// Add new client types here in a single place so every host (web, CLI, desktop)
-    /// stays in sync.
+    /// Supported BitTorrent client types. Add new members here in a single place so every
+    /// host (web, CLI, desktop) stays in sync. Only qBittorrent is implemented today.
     /// </summary>
-    public static class BitTorrentClientTypes
+    public enum BitTorrentClientType
     {
-        public const string QBittorrent = "qBittorrent";
+        QBittorrent
+    }
 
-        /// <summary>Planned but not yet implemented; retained so the dropdown is forward-compatible.</summary>
-        public const string Deluge = "Deluge";
-
-        /// <summary>The canonical, ordered list of client types offered to the user.</summary>
-        public static readonly IReadOnlyList<string> All = new List<string>
+    /// <summary>
+    /// JSON converter for <see cref="BitTorrentClientType"/>. Serializes as a string so
+    /// config.json stays human-readable, and reads the string back to the enum member
+    /// (case-insensitive).
+    /// </summary>
+    public sealed class BitTorrentClientTypeConverter : JsonConverter<BitTorrentClientType>
+    {
+        public override BitTorrentClientType Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            QBittorrent            
-        };
+            var value = reader.GetString();
+            foreach (BitTorrentClientType member in Enum.GetValues<BitTorrentClientType>())
+            {
+                if (string.Equals(member.ToString(), value, StringComparison.OrdinalIgnoreCase))
+                {
+                    return member;
+                }
+            }
+
+            throw new JsonException($"Unknown BitTorrent client type: '{value}'.");
+        }
+
+        public override void Write(Utf8JsonWriter writer, BitTorrentClientType value, JsonSerializerOptions options)
+        {
+            writer.WriteStringValue(value.ToString());
+        }
     }
 }

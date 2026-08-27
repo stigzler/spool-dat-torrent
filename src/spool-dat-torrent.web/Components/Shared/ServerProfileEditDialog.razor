@@ -63,19 +63,17 @@
                               OnAdornmentClick="ToggleApiKeyVisibility"
                               AdornmentAriaLabel="Toggle API key visibility" />
             </MudItem>
-            @* Client Type dropdown hidden for now — only qBittorrent is implemented. Re-enable
-               when additional client types (e.g. Deluge) are supported. *@
-            @* <MudItem xs="12" md="6">
-                <MudSelect T="string" @bind-Value="Profile.ClientType"
+            <MudItem xs="12" md="6">
+                <MudSelect T="BitTorrentClientType" @bind-Value="Profile.ClientType"
                            @bind-Value:after="ScheduleSave"
                            Label="Client Type"
                            Variant="Variant.Outlined" FullWidth="true">
-                    @foreach (var type in BitTorrentClientTypes.All)
+                    @foreach (var type in Enum.GetValues<BitTorrentClientType>())
                     {
                         <MudSelectItem Value="@type">@type</MudSelectItem>
                     }
                 </MudSelect>
-            </MudItem> *@
+            </MudItem>
         </MudGrid>
 
         <MudDivider Class="my-3" />

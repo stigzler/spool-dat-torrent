@@ -7,7 +7,7 @@ namespace SpoolDatTorrent.Core.Configuration
 {
     public class GlobalSpoolSettings
     {
-        public string DefaultServerProfile { get; set; } = "LocalQBit";
+        public string DefaultServerProfile { get; set; } = "DefaultQBit";
         public Dictionary<string, TorrentServerProfile> TorrentServers { get; set; } = new();
 
         /// <summary>

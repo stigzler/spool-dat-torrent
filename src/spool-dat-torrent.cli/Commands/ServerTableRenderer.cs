@@ -30,7 +30,7 @@ namespace SpoolDatTorrent.Cli.Commands
             {
                 table.AddRow(
                     Markup.Escape(s.Name),
-                    Markup.Escape(s.ClientType),
+                    Markup.Escape(s.ClientType.ToString()),
                     Markup.Escape(s.Host),
                     Markup.Escape(s.Username),
                     s.HasApiKey ? "[green]yes[/]" : "[grey]no[/]",
