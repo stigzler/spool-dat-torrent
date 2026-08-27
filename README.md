@@ -252,7 +252,7 @@ Optional settings:
 
 You can cancel a stream from the Streams page (or `cancel` / `cancel-all` in the CLI).
 
-> **Two important takeaways:**
+> **Three important takeaways:**
 >
 
 > 1. **Cancelling does NOT remove any ROMs from the destination folder.** Files already moved stay put.
