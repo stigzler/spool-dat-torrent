@@ -6,7 +6,7 @@ namespace SpoolDatTorrent.Core.Configuration
 {
     public class TorrentServerProfile
     {
-        public string ClientType { get; set; } = "qBittorrent";
+        public BitTorrentClientType ClientType { get; set; } = BitTorrentClientType.QBittorrent;
         public string Host { get; set; } = "http://localhost:8080";
         public string Username { get; set; } = "admin";
         public string Password { get; set; } = string.Empty;
