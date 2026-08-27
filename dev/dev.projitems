@@ -18,5 +18,15 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="$(MSBuildThisFileDirectory)docs\ai-docs\" />
+    <Folder Include="$(MSBuildThisFileDirectory)NewFolder\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="$(MSBuildThisFileDirectory)docs\images\Screenshot 2026-08-27 175918.png" />
+    <Content Include="$(MSBuildThisFileDirectory)docs\images\Screenshot 2026-08-27 180827.png" />
+    <Content Include="$(MSBuildThisFileDirectory)docs\images\Screenshot 2026-08-27 181708.png" />
+    <Content Include="$(MSBuildThisFileDirectory)docs\images\Screenshot 2026-08-27 190115.png" />
+    <Content Include="$(MSBuildThisFileDirectory)docs\images\Screenshot 2026-08-27 190149.png" />
+    <Content Include="$(MSBuildThisFileDirectory)docs\images\Screenshot 2026-08-27 190300.png" />
+    <Content Include="$(MSBuildThisFileDirectory)docs\images\Screenshot 2026-08-27 192154.png" />
   </ItemGroup>
 </Project>
