@@ -34,7 +34,7 @@ namespace SpoolDatTorrent.Core.Commands
 
             _settings.TorrentServers[profileName] = new TorrentServerProfile
             {
-                ClientType = BitTorrentClientTypes.QBittorrent,
+                ClientType = BitTorrentClientType.QBittorrent,
                 Host = "http://localhost:8080",
                 Username = "admin",
                 Password = string.Empty,

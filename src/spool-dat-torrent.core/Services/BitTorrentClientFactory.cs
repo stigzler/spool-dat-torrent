@@ -41,7 +41,7 @@ namespace SpoolDatTorrent.Core.Services
                 profile = _settings.TorrentServers[firstProfile];
             }
 
-            // In the future, if profile.ClientType == "Deluge", you return a DelugeClient here
+            // In the future, if profile.ClientType == BitTorrentClientType.Deluge, you return a DelugeClient here
             var httpClient = _httpClientFactory.CreateClient($"qbit_{profileName}");
             httpClient.BaseAddress = new Uri(profile.Host);
 

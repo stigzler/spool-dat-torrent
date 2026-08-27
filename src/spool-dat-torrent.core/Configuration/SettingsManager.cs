@@ -9,6 +9,13 @@ namespace SpoolDatTorrent.Core.Configuration
 {
     public static class SettingsManager
     {
+        /// <summary>Shared serializer options, including the client-type enum converter.</summary>
+        private static readonly JsonSerializerOptions _jsonOptions = new()
+        {
+            WriteIndented = true,
+            Converters = { new BitTorrentClientTypeConverter() }
+        };
+
         public static string GetSettingsPath()
         {
             var envPath = Environment.GetEnvironmentVariable("SPOOL_CONFIG_DIR");
@@ -76,7 +83,7 @@ namespace SpoolDatTorrent.Core.Configuration
             if (File.Exists(settingsPath))
             {
                 var json = File.ReadAllText(settingsPath);
-                var settings = JsonSerializer.Deserialize<GlobalSpoolSettings>(json) ?? CreateDefaultSettings();
+                var settings = JsonSerializer.Deserialize<GlobalSpoolSettings>(json, _jsonOptions) ?? CreateDefaultSettings();
                 DecryptSecrets(settings);
                 return settings;
             }
@@ -109,15 +116,14 @@ namespace SpoolDatTorrent.Core.Configuration
         public static void SaveSettings(GlobalSpoolSettings settings)
         {
             string settingsPath = GetSettingsPath();
-            var options = new JsonSerializerOptions { WriteIndented = true };
 
             // Serialize a deep copy with encrypted secrets so the in-memory object keeps
             // plaintext (the UI/engine read it) and isn't double-encrypted on the next save.
-            var copy = JsonSerializer.Deserialize<GlobalSpoolSettings>(JsonSerializer.Serialize(settings));
+            var copy = JsonSerializer.Deserialize<GlobalSpoolSettings>(JsonSerializer.Serialize(settings, _jsonOptions), _jsonOptions);
             if (copy != null)
             {
                 EncryptSecrets(copy);
-                File.WriteAllText(settingsPath, JsonSerializer.Serialize(copy, options));
+                File.WriteAllText(settingsPath, JsonSerializer.Serialize(copy, _jsonOptions));
             }
         }
 
@@ -163,10 +169,10 @@ namespace SpoolDatTorrent.Core.Configuration
             return new Dictionary<string, TorrentServerProfile>
             {
                 {
-                    "LocalQBit",
+                    "DefaultQBit",
                     new TorrentServerProfile
                     {
-                        ClientType = "qBittorrent",
+                        ClientType = BitTorrentClientType.QBittorrent,
                         Host = "http://localhost:8080",
                         Username = "admin",
                         Password = "",
@@ -190,8 +196,7 @@ namespace SpoolDatTorrent.Core.Configuration
 
             var defaultSettings = CreateDefaultSettings();
 
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            var json = JsonSerializer.Serialize(defaultSettings, options);
+            var json = JsonSerializer.Serialize(defaultSettings, _jsonOptions);
 
             File.WriteAllText(settingsPath, json);
             Logger.Log($"⚙️ Created default configuration file at: {settingsPath}");
@@ -211,7 +216,7 @@ namespace SpoolDatTorrent.Core.Configuration
             if (File.Exists(settingsPath))
             {
                 var json = File.ReadAllText(settingsPath);
-                settings = JsonSerializer.Deserialize<GlobalSpoolSettings>(json) ?? new GlobalSpoolSettings();
+                settings = JsonSerializer.Deserialize<GlobalSpoolSettings>(json, _jsonOptions) ?? new GlobalSpoolSettings();
             }
             else
             {
@@ -229,7 +234,7 @@ namespace SpoolDatTorrent.Core.Configuration
 
             settings.TorrentServers[profileName] = new TorrentServerProfile
             {
-                ClientType = "ToBeSet",
+                ClientType = BitTorrentClientType.QBittorrent,
                 Host = "ToBeSet",
                 Username = string.Empty,
                 Password = string.Empty,
@@ -242,8 +247,7 @@ namespace SpoolDatTorrent.Core.Configuration
                 }
             };
 
-            var writeOptions = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, writeOptions));
+            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, _jsonOptions));
 
             return profileName;
         }
@@ -261,7 +265,7 @@ namespace SpoolDatTorrent.Core.Configuration
             }
 
             var json = File.ReadAllText(settingsPath);
-            var settings = JsonSerializer.Deserialize<GlobalSpoolSettings>(json) ?? new GlobalSpoolSettings();
+            var settings = JsonSerializer.Deserialize<GlobalSpoolSettings>(json, _jsonOptions) ?? new GlobalSpoolSettings();
 
             if (!settings.TorrentServers.Remove(profileName))
             {
@@ -275,8 +279,7 @@ namespace SpoolDatTorrent.Core.Configuration
                 settings.DefaultServerProfile = settings.TorrentServers.Keys.FirstOrDefault() ?? string.Empty;
             }
 
-            var writeOptions = new JsonSerializerOptions { WriteIndented = true };
-            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, writeOptions));
+            File.WriteAllText(settingsPath, JsonSerializer.Serialize(settings, _jsonOptions));
 
             return true;
         }
