@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Solution Items/">
     <File Path="Dockerfile" />
+    <File Path="README.md" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/spool-dat-torrent.cli/spool-dat-torrent.cli.csproj" Id="aa0ecd07-4d3e-47e7-854e-2added8624f9" />
