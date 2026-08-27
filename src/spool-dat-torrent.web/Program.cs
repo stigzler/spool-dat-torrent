@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MudBlazor.Services;
@@ -43,6 +44,14 @@ namespace SpoolDatTorrent.Web
                 config.SnackbarConfiguration.ShowCloseIcon = true;
                 config.SnackbarConfiguration.VisibleStateDuration = 5000;
             });
+
+            // Persist DataProtection keys (used to encrypt the login cookie) to the data
+            // directory so sessions survive container recreation. Without this, the keys
+            // live in /root/.aspnet and every image update logs everyone out.
+            var dataDir = Path.GetDirectoryName(SettingsManager.GetDatabasePath())
+                ?? AppDomain.CurrentDomain.BaseDirectory;
+            builder.Services.AddDataProtection()
+                .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDir, "DataProtection-Keys")));
 
             // Load the shared config.json (same file the CLI uses) and expose it via DI.
             var settings = SettingsManager.LoadSettings();
