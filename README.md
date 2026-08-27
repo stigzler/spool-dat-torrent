@@ -1,6 +1,6 @@
 # SpoolDatTorrent
 
-SpoolDatTorrent (SDT) dynamically monitors and adjusts what files are being downloaded by a bitTorrent client to just those specified by a dat file. This is useful where you have large torrents (say 3.5TB / 4000 files) where it is not possible to manually select what files you require.
+SpoolDatTorrent (SDT) dynamically monitors and adjusts what files are being downloaded by a bitTorrent client to just those specified by a dat file. This is useful where you have large torrents (say 3.5TB / 10000 files) where it is not possible to manually select what files you require.
 
 Some specific types of file sets have tools that produce a custom `.dat` file to 'slim-down' that set (eg. the excellent [Retool](https://github.com/unexpectedpanda/retool)). Traditionally, people would have to download all of the files then use these `.dat` files to filter that set to their requirements. This turns that on its head and downloads *only* the files that are specified by the dat. This saves on time, disk-space, bandwidth and grey hairs.
 
@@ -23,8 +23,8 @@ Make sure you also 🌱
 
 ## Two front-ends
 
-- **Web UI** — a browser-based admin, runs in Docker.
-- **CLI** — a terminal app (Spectre.Console) for scripting/headless use.
+- **Web UI** — a browser-based, runs in Docker.
+- **CLI** — a terminal app for scripting/headless use.
 
 ## Prerequisites
 
@@ -110,7 +110,7 @@ SpoolDatTorrent cancel 1
       }
     }
   },
-  "DefaultSpoolingTarget": "/staging-dir",
+  "DefaultSpoolingTarget": "C:/files/staging-dir",
   "PollIntervalSeconds": 2,
   "SettlingTimeSeconds": 5,
   "CacheDirectory": "",
@@ -151,7 +151,7 @@ services:
       - /mnt/scratch/Downloads/qbittorrent/complete:/downloads/complete
       - /mnt/scratch/Downloads/qbittorrent/incomplete:/downloads/incomplete
       - /mnt/pool/Media/Bin/spool-dat-torrent-in:/staging-dir
-      - /mnt/pool/Media/Games/roms:/library-dir     # Optional alternate destination
+      - /mnt/pool/Media/Games/files:/library-dir     # Optional alternate destination
     networks:
       - media_net
     restart: unless-stopped
@@ -166,7 +166,7 @@ Then browse to `http://<host>:6502` and log in with the `SDT_ADMIN_PASSWORD` you
 
 These two mounts are **how SDT sees the files qBittorrent has downloaded.**
 
-qBittorrent saves its downloads into two folders:
+qBittorrent saves its downloads into two docker virtual folders:
 
 - **`/downloads/incomplete`** — files that are still downloading.
 - **`/downloads/complete`** — files that have finished downloading.
@@ -200,8 +200,8 @@ services:
 
 ### The `staging-dir` and `library-dir` mounts
 
-- **`/staging-dir`** — the **default** destination. Completed files are moved here (into a subfolder named after the torrent). This is where you'd point a post-processing tool (e.g. a ROM manager) to pick files up.
-- **`/library-dir`** — an **optional alternate** destination for files that need no further processing. Leave this mount out entirely if you don't need it.
+- **`/staging-dir`** — the **default** destination. Completed files are moved here (into a subfolder named after the torrent). This is where you'd point a post-processing tool (e.g. a file/hash manager) to pick files up.
+- **`/library-dir`** — an **optional alternate** destination for files that need no further processing. Leave this mount out entirely if you don't need it. Eg. if you want your files to go directly into your canon library folder. 
 
 > ⚠️ **Do not rename the container-side paths.** The part after the `:` must stay exactly `/staging-dir` and `/library-dir` — these are the fixed names SDT looks for. You can change the host-side path (before the `:`) to anything you like.
 
@@ -213,10 +213,10 @@ Key items:
 
 - **Default Server Profile** — the client used when a stream doesn't specify one.
 - **Poll Interval** — how often the engine polls the client. For set and forget, this can be high - eg. 30s. For real time monitoring for large torrents set to around 5s.
-- **Settling Time** — wait after pausing before moving files. Again, the larger the .torrent, the higher amount of time needed. If you're getting move errors after a batch has been downloaded, increase this number. 5 works well for a 3.7TB torrent with 4000 files.
+- **Settling Time** — the time to wait after the last downlaod of a batch before moving files. The larger the batch, the higher amount of time needed. If you're getting move errors after a batch has been downloaded, increase this number.
 - **Server Retry Count** — failures before a stream is marked errored.
 - **Safety Margin (%)** — headroom for boundary-piece overhead. Short version: bittorrent sometimes necessitates downloading parts of other files to complete the desired file. Therefore, 1.2GB may be needed for a 1GB file batch.
-- **Staging / Library host path** — display-only; shows your real host path instead of the container path in the Stream cards.
+- **Staging / Library host path** — display-only - nopt operational; if populated, shows your real host path instead of the container path in the Stream cards
 
 ### Add / edit a server
 
@@ -229,21 +229,24 @@ Go to **Servers** → **Add Server**, then edit it:
 - **Spooling Cap (GB)** — max batch size for this client. For example, if you have a 2TB download disk, you might set this to 1500 (~1.5TB). Do leave *some* headroom.
 - **Docker path mapping** — only needed if qBittorrent and SDT see the same disk at different paths. Leave both blank if you mounted the same paths in both containers.
 
+#### More on Spooling Cap/Batch Size
+The spooling cap is set per server (eg. 1TB). If you spool 1 torrent on this server, batch sizes will be the server cap - the safety margin (eg. if 10% safety margin: 900GB). If you have two torrent spooling against the server, then this is that number / 2 (ie. each torrent gets 450GB). It divvies them out equally. 
+
 ### Add a stream
 
 ![Screenshot 2026 08 27 181708](dev/docs/images/Screenshot%202026-08-27%20181708.png)
 
-Go to **Streams** → **Add Stream**. The minimum is a **torrent** (upload a `.torrent` file, or paste a magnet/info-hash) and a **DAT file** (upload `.dat`/`.xml`/`.lst`).
+Go to **Streams** → **Add Stream**. The minimum setup is a **torrent** (upload a `.torrent` file, or paste a magnet/info-hash) and a **DAT file** (upload `.dat`/`.xml`/`.lst`).
 
 Optional settings:
 
 - **Server Profile** — which client to use (defaults to the configured default).
-- **Strategy** — `MoveFiles` (default), `Pause`, or `RateLimit`. Presently latter two aren't implemented.
+- **Strategy** — `MoveFiles` (default), `Pause`, or `RateLimit`. ⚠️ Presently latter two aren't implemented.
 - **Name** — friendly display name. Defaults to torrent name if left blank.
-- **Destination root** — `staging-dir` or `library-dir`, plus an optional subfolder. If blank, the full .torrent filepath is used (even if has empty parent folders before the files). If specified, SDT will attempt to remove empty parent folders and place files directly in the specified path.
+- **Destination root** — `staging-dir` or `library-dir`, plus an optional subfolder. If blank, the full .torrent filepath is used (even if has empty parent folders before the files). If not blank, SDT will attempt to remove empty parent folders and place files directly in the specified path. This can be confounded by messy file structures (files in different levels). 
 - **File Filter** — e.g. `*USA*`. Filter by specified criteria.
 - **Settling Time** — per-stream override of the global default.
-- **Priority / De-priority Terms** — filename substrings to download first/last (e.g. `(USA)` first, `(Japan)` last). Note: these slow performance. These are useful where certain tags in filenames are more available than others, meaning you're not waiting on poorly seeded files. Eg. `(USA)` and `(World)` may be better seeded than `(Japan)`.
+- **Priority / De-priority Terms** — filename substrings to download first/last (e.g. `(USA)` first, `(Japan)` last). These are useful where certain tags in filenames are more available than others, meaning you're not waiting on poorly seeded files. Eg. `(USA)` and `(World)` may be better seeded than `(Japan)`. ⚠️ Note: using these slow performance given files are less adjacent due to the cherry-picking approach. 
 
 ### Cancelling streams
 
@@ -253,4 +256,4 @@ You can cancel a stream from the Streams page (or `cancel` / `cancel-all` in the
 >
 > 1. **Cancelling does NOT remove any ROMs from the destination folder.** Files already moved stay put.
 > 2. **It DOES remove the torrent from your BitTorrent client** (and its scratch files).
-> 3. Re-adding the same torrent later (even with a different DAT) will **resume** spooling that torrent to the configured destination/options.
+> 3. Re-adding the same torrent later (even with a different DAT) will **resume** spooling that torrent to the configured destination/options. Any previously moved files will be detected and skipped for this spooling session if they share the destination of the previous Stream. 
