@@ -14,9 +14,9 @@ namespace SpoolDatTorrent.Core.Configuration
         /// A real folder path on the machine running SpoolDatTorrent where completed files
         /// are moved to by default. Files go into a subfolder named after the torrent.
         /// A stream's per-stream destination override takes precedence over this.
-        /// Examples: "C:\Spooled Output" (Windows) or "/mnt/pool/Media/Games/roms/unsorted" (Linux).
+        /// Defaults to the container staging root; override for local (non-Docker) use.
         /// </summary>
-        public string DefaultSpoolingTarget { get; set; } = string.Empty;
+        public string DefaultSpoolingTarget { get; set; } = SpoolPaths.DefaultStagingDir;
 
         /// <summary>
         /// Optional library root: the final destination for files needing no further
@@ -39,12 +39,6 @@ namespace SpoolDatTorrent.Core.Configuration
         /// operations. Empty means the container path is shown as-is.
         /// </summary>
         public string LibraryHostPath { get; set; } = string.Empty;
-
-        /// <summary>
-        /// Password required to log in to the web UI. Single-admin, LAN-only use; compared
-        /// as plaintext on login. Empty means the web UI is not protected.
-        /// </summary>
-        public string AdminPassword { get; set; } = string.Empty;
 
         /// <summary>How often the engine polls the BitTorrent client, in seconds.</summary>
         [Range(1, 60)]

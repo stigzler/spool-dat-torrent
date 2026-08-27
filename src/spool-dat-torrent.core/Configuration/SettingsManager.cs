@@ -144,31 +144,37 @@ namespace SpoolDatTorrent.Core.Configuration
             }
         }
 
+        /// <summary>
+        /// Build a fresh settings object. All scalar defaults come from the property
+        /// initializers on <see cref="GlobalSpoolSettings"/> (single source of truth);
+        /// only the seed server profile is added here.
+        /// </summary>
         private static GlobalSpoolSettings CreateDefaultSettings()
         {
             return new GlobalSpoolSettings
             {
-                DefaultServerProfile = "LocalQBit",
-                DefaultSpoolingTarget = SpoolPaths.DefaultStagingDir,
-                PollIntervalSeconds = 15,
-                SettlingTimeSeconds = 30,
-                TorrentServers = new Dictionary<string, TorrentServerProfile>
+                TorrentServers = CreateDefaultServers()
+            };
+        }
+
+        private static Dictionary<string, TorrentServerProfile> CreateDefaultServers()
+        {
+            return new Dictionary<string, TorrentServerProfile>
+            {
                 {
+                    "LocalQBit",
+                    new TorrentServerProfile
                     {
-                        "LocalQBit",
-                        new TorrentServerProfile
+                        ClientType = "qBittorrent",
+                        Host = "http://localhost:8080",
+                        Username = "admin",
+                        Password = "",
+                        ApiKey = "",
+                        SpoolingCapGb = 500,
+                        ClientDownloadsMapping = new ClientDownloadsMapping
                         {
-                            ClientType = "qBittorrent",
-                            Host = "http://localhost:8080",
-                            Username = "admin",
-                            Password = "",
-                            ApiKey = "",
-                            SpoolingCapGb = 500,
-                            ClientDownloadsMapping = new ClientDownloadsMapping
-                            {
-                                ClientVirtualPrefix = "",
-                                AppVirtualPrefix = ""
-                            }
+                            ClientVirtualPrefix = "",
+                            AppVirtualPrefix = ""
                         }
                     }
                 }
@@ -181,33 +187,7 @@ namespace SpoolDatTorrent.Core.Configuration
 
             if (File.Exists(settingsPath)) return;
 
-            var defaultSettings = new GlobalSpoolSettings
-            {
-                DefaultServerProfile = "LocalQBit",
-                DefaultSpoolingTarget = SpoolPaths.DefaultStagingDir,
-                PollIntervalSeconds = 15,
-                SettlingTimeSeconds = 30,
-                TorrentServers = new Dictionary<string, TorrentServerProfile>
-                {
-                    {
-                        "LocalQBit",
-                        new TorrentServerProfile
-                        {
-                            ClientType = "qBittorrent",
-                            Host = "http://localhost:8080",
-                            Username = "admin",
-                            Password = "",
-                            ApiKey = "",
-                            SpoolingCapGb = 500,
-                            ClientDownloadsMapping = new ClientDownloadsMapping
-                            {
-                                ClientVirtualPrefix = "",
-                                AppVirtualPrefix = ""
-                            }
-                        }
-                    }
-                }
-            };
+            var defaultSettings = CreateDefaultSettings();
 
             var options = new JsonSerializerOptions { WriteIndented = true };
             var json = JsonSerializer.Serialize(defaultSettings, options);
@@ -236,10 +216,6 @@ namespace SpoolDatTorrent.Core.Configuration
             {
                 settings = new GlobalSpoolSettings
                 {
-                    DefaultServerProfile = "LocalQBit",
-                    DefaultSpoolingTarget = SpoolPaths.DefaultStagingDir,
-                    PollIntervalSeconds = 15,
-                    SettlingTimeSeconds = 30,
                     TorrentServers = new Dictionary<string, TorrentServerProfile>()
                 };
             }
