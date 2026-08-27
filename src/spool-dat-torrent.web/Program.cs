@@ -51,7 +51,7 @@ namespace SpoolDatTorrent.Web
 
             // Core services (shared with the CLI). The engine runs as a hosted service so
             // live progress snapshots are available to the Streams page.
-            builder.Services.AddDbContext<SpoolDbContext>(options => options.UseSqlite("DataSource=spooldattorrent.db"));
+            builder.Services.AddDbContext<SpoolDbContext>(options => options.UseSqlite($"DataSource={SettingsManager.GetDatabasePath()}"));
             builder.Services.AddHttpClient();
             builder.Services.AddSingleton<IBitTorrentClientFactory, BitTorrentClientFactory>();
             builder.Services.AddSingleton<IDatParserService, LogiqxDatParserService>();

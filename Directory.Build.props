@@ -1,0 +1,9 @@
+<Project>
+
+  <PropertyGroup>
+	<!-- Single source of truth for the product version, shared by all projects
+		 (Core, CLI, Web, and future desktop). Bump this once to version everything. -->
+	<Version>0.8.4</Version>
+  </PropertyGroup>
+
+</Project>

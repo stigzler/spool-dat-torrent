@@ -15,6 +15,7 @@ WORKDIR /app
 
 EXPOSE 6502
 ENV ASPNETCORE_HTTP_PORTS=6502
+ENV SPOOL_CONFIG_DIR=/app/data
 
 RUN mkdir -p /app/data /app/dats
 

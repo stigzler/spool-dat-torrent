@@ -22,6 +22,23 @@ namespace SpoolDatTorrent.Core.Configuration
         }
 
         /// <summary>
+        /// Resolve the SQLite database path. When SPOOL_CONFIG_DIR is set (Docker), the DB
+        /// lives beside config.json so it persists on the mounted data volume. Otherwise it
+        /// lives in the app base directory (local dev / CLI).
+        /// </summary>
+        public static string GetDatabasePath()
+        {
+            var envPath = Environment.GetEnvironmentVariable("SPOOL_CONFIG_DIR");
+            if (!string.IsNullOrWhiteSpace(envPath))
+            {
+                Directory.CreateDirectory(envPath);
+                return Path.Combine(envPath, "spooldattorrent.db");
+            }
+
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "spooldattorrent.db");
+        }
+
+        /// <summary>
         /// Resolve the directory where per-stream source files (.torrent/.dat) are cached.
         /// Priority: explicit <paramref name="configuredPath"/> > SPOOL_CACHE_DIR env var >
         /// a "cache" folder beside the settings file. The directory is created if missing.
