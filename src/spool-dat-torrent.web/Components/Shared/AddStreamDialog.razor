@@ -47,6 +47,7 @@
 
             <MudStack Row="true" Spacing="3">
                 <MudSelect T="string" @bind-Value="_server"
+                           @bind-Value:after="OnCapChanged"
                            Label="Server Profile"
                            HelperText="BitTorrent client used for this stream. Defaults to the configured default."
                            Variant="Variant.Outlined" FullWidth="true">
@@ -58,6 +59,7 @@
 
                 <MudSelect T="string" @bind-Value="_strategy"
                            Label="Strategy"
+                           HelperText="MoveFiles: move each completed batch to the destination and continue. Pause: stop after the current batch and wait for manual resume. RateLimit: download at the global rate limit (Settings)."
                            Variant="Variant.Outlined" FullWidth="true">
                     <MudSelectItem Value="@SpoolingStrategy.MoveFiles.ToString()">MoveFiles</MudSelectItem>
                     <MudSelectItem Value="@SpoolingStrategy.Pause.ToString()">Pause</MudSelectItem>
@@ -96,11 +98,6 @@
             </MudText>
 
             <MudStack Row="true" Spacing="3">
-                <MudTextField @bind-Value="_filter"
-                              Label="File Filter (optional)"
-                              HelperText="File matching pattern, e.g. *USA*. Defaults to *.*."
-                              Variant="Variant.Outlined" FullWidth="true" />
-
                 <MudNumericField @bind-Value="_settlingTimeSeconds"
                                  Label="Settling Time (seconds, optional)"
                                  HelperText="How long to wait after pausing this stream's torrent before moving its completed files (lets the client finish writing). Leave blank to use the global default."
@@ -118,6 +115,13 @@
                               HelperText="Download last, e.g. (Japan),(China). Slows performance."
                               Variant="Variant.Outlined" FullWidth="true" />
             </MudStack>
+
+            <MudNumericField T="long?" @bind-Value="_spoolingCapGb"
+                             @bind-Value:after="OnCapChanged"
+                             Label="Spooling Cap (GB, optional)"
+                             HelperText="@CapHelperText"
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="1" />
 
         </MudStack>
     </DialogContent>
@@ -137,12 +141,13 @@
     private string _server = string.Empty;
     private string _destinationRoot = string.Empty;
     private string _targetSubpath = string.Empty;
-    private string _filter = string.Empty;
     private string _strategy = SpoolingStrategy.MoveFiles.ToString();
     private string _magnet = string.Empty;
     private int? _settlingTimeSeconds;
     private string _priorityTerms = string.Empty;
     private string _dePriorityTerms = string.Empty;
+    private long? _spoolingCapGb;
+    private string? _capError;
 
     private const string _noneKey = "none";
 
@@ -176,7 +181,57 @@
         (_fileError == null) &&
         ((_torrentFile != null || !string.IsNullOrWhiteSpace(_magnet)) &&
         _datFile != null) &&
-        _destinationError == null;
+        _destinationError == null &&
+        _capError == null;
+
+    private string CapHelperText
+    {
+        get
+        {
+            if (_capError != null)
+            {
+                return _capError;
+            }
+
+            long serverCap = GetServerCapGb();
+            return $"Maximum spool size for this stream. Leave blank to share the server's {serverCap} GB cap with other streams. Cannot exceed {serverCap} GB.";
+        }
+    }
+
+    private long GetServerCapGb()
+    {
+        if (!string.IsNullOrWhiteSpace(_server) && Settings.TorrentServers.TryGetValue(_server, out var profile))
+        {
+            return profile.SpoolingCapGb;
+        }
+        return 0;
+    }
+
+    private void OnCapChanged()
+    {
+        _capError = ValidateCap(_spoolingCapGb);
+    }
+
+    private string? ValidateCap(long? capGb)
+    {
+        if (!capGb.HasValue)
+        {
+            return null;
+        }
+
+        if (capGb.Value <= 0)
+        {
+            return "Spooling cap must be greater than 0 GB.";
+        }
+
+        long serverCap = GetServerCapGb();
+        if (serverCap > 0 && capGb.Value > serverCap)
+        {
+            return $"Spooling cap cannot exceed the server profile's cap of {serverCap} GB.";
+        }
+
+        return null;
+    }
 
     private static bool HasAllowedExtension(IBrowserFile file, string[] allowed)
     {
@@ -379,11 +434,11 @@
                 Name = string.IsNullOrWhiteSpace(_name) ? null : _name.Trim(),
                 Server = string.IsNullOrWhiteSpace(_server) ? null : _server,
                 Target = ResolvedTarget,
-                Filter = string.IsNullOrWhiteSpace(_filter) ? null : _filter.Trim(),
                 Strategy = _strategy,
                 SettlingTimeSeconds = _settlingTimeSeconds,
                 PriorityTerms = string.IsNullOrWhiteSpace(_priorityTerms) ? null : _priorityTerms.Trim(),
                 DePriorityTerms = string.IsNullOrWhiteSpace(_dePriorityTerms) ? null : _dePriorityTerms.Trim(),
+                SpoolingCapGb = _spoolingCapGb,
                 TorrentFilePath = torrentPath,
                 OriginalTorrentName = _torrentFile?.Name,
                 DatFilePath = datPath,

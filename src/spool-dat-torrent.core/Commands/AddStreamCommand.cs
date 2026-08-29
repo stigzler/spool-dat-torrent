@@ -48,6 +48,7 @@ namespace SpoolDatTorrent.Core.Commands
             int? settlingTimeSeconds = null,
             string? priorityTerms = null,
             string? dePriorityTerms = null,
+            long? spoolingCapGb = null,
             CancellationToken cancellationToken = default)
         {
             using var scope = _scopeFactory.CreateScope();
@@ -84,6 +85,7 @@ namespace SpoolDatTorrent.Core.Commands
                 if (settlingTimeSeconds.HasValue) existing.SettlingTimeSeconds = settlingTimeSeconds.Value;
                 if (!string.IsNullOrWhiteSpace(priorityTerms)) existing.PriorityTerms = priorityTerms;
                 if (!string.IsNullOrWhiteSpace(dePriorityTerms)) existing.DePriorityTerms = dePriorityTerms;
+                if (spoolingCapGb.HasValue) existing.SpoolingCapGb = spoolingCapGb.Value;
 
                 await db.SaveChangesAsync(cancellationToken);
                 Logger.Log($"📝 Updated stream '{existing.Name}': {FormatSetupDetails(existing)}");
@@ -118,7 +120,8 @@ namespace SpoolDatTorrent.Core.Commands
                 Strategy = strategy ?? SpoolingStrategy.MoveFiles,
                 SettlingTimeSeconds = settlingTimeSeconds,
                 PriorityTerms = priorityTerms ?? string.Empty,
-                DePriorityTerms = dePriorityTerms ?? string.Empty
+                DePriorityTerms = dePriorityTerms ?? string.Empty,
+                SpoolingCapGb = spoolingCapGb
             };
 
             db.Streams.Add(stream);
@@ -135,6 +138,7 @@ namespace SpoolDatTorrent.Core.Commands
                    $"target='{s.SpoolingTargetOverride ?? "(default)"}', strategy={s.Strategy}, " +
                    $"filter='{s.FileFilter}', settling={s.SettlingTimeSeconds?.ToString() ?? "default"}s, " +
                    $"priorityTerms='{s.PriorityTerms}', dePriorityTerms='{s.DePriorityTerms}', " +
+                   $"spoolingCapGb={s.SpoolingCapGb?.ToString() ?? "(default)"}, " +
                    $"torrentPath='{s.OriginalTorrentPath ?? "(none)"}', magnet='{s.OriginalMagnet ?? "(none)"}', " +
                    $"datPath='{s.OriginalDatPath ?? "(none)"}'";
         }

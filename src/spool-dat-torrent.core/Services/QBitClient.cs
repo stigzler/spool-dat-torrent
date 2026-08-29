@@ -389,7 +389,7 @@ namespace SpoolDatTorrent.Core.Services
                 new KeyValuePair<string, string>("hashes", torrentId),
                 new KeyValuePair<string, string>("limit", bytesPerSecond.ToString())
             });
-            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/downloadLimit") { Content = content };
+            var request = new HttpRequestMessage(HttpMethod.Post, "/api/v2/torrents/setDownloadLimit") { Content = content };
             AddAuthHeader(request);
 
             await _httpClient.SendAsync(request, cancellationToken);

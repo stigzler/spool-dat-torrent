@@ -83,5 +83,12 @@ namespace SpoolDatTorrent.Core.Configuration
         /// again" checkbox); when false, the action proceeds immediately.
         /// </summary>
         public bool ConfirmDeleteConfirmation { get; set; } = true;
+
+        /// <summary>
+        /// Global download rate limit (in KB/s) applied to streams whose strategy is
+        /// <see cref="SpoolingStrategy.RateLimit"/>. 0 means unlimited (no throttle).
+        /// </summary>
+        [Range(0, 1000000)]
+        public long RateLimitKbps { get; set; } = 0;
     }
 }

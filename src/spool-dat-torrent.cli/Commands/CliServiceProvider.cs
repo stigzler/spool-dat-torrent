@@ -49,6 +49,7 @@ namespace SpoolDatTorrent.Cli.Commands
             services.AddSingleton<SpoolingEngine>();
             services.AddTransient<DeleteServerProfileCommand>();
             services.AddTransient<AddServerProfileCommand>();
+            services.AddTransient<EditStreamCommand>();
 
             var provider = services.BuildServiceProvider();
 

@@ -45,6 +45,14 @@ namespace SpoolDatTorrent.Core.Models
         /// Empty = no de-prioritisation.
         /// </summary>
         public string DePriorityTerms { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Per-stream override for the maximum spool size (GB). Null means the stream uses
+        /// the fair-share split of its server's <see cref="TorrentServerProfile.SpoolingCapGb"/>.
+        /// When set, it must not exceed the server profile's cap.
+        /// </summary>
+        public long? SpoolingCapGb { get; set; }
+
         public StreamLifecycleStatus Status { get; set; } = StreamLifecycleStatus.Active;
 
         /// <summary>
@@ -53,6 +61,14 @@ namespace SpoolDatTorrent.Core.Models
         /// streams it paused, even after an app restart.
         /// </summary>
         public bool PausedByGlobal { get; set; }
+
+        /// <summary>
+        /// True when a rate limit has actually been applied to this stream's torrent in the
+        /// BitTorrent client. Set by the engine when it throttles a batch, and cleared when
+        /// the strategy is changed away from <see cref="SpoolingStrategy.RateLimit"/>. Persisted
+        /// so the "Rate Limited" indicator survives an app restart while the limit is active.
+        /// </summary>
+        public bool IsRateLimited { get; set; }
 
         public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
         public List<TorrentFileItem> Files { get; set; } = new();

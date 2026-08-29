@@ -4,14 +4,17 @@
 <MudCard Elevation="2" Class="d-flex flex-column h-100 me-2">
     <MudCardHeader>
         <MudCardHeaderContent>
-            <MudStack Row="true" AlignItems="AlignItems.Center">
-                <MudIcon Icon="@Icons.Material.Filled.Dns" Color="Color.Primary" />
-                <MudText Typo="Typo.h6">@Name</MudText>
-                @if (IsDefault)
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Class="ml-2">Default</MudChip>
-                }
-            </MudStack>
+            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px;">
+                <div style="display: flex; align-items: center; min-width: 0;">
+                    <MudIcon Icon="@Icons.Material.Filled.Dns" Color="Color.Primary" />
+                    <MudText Typo="Typo.h6">@Name</MudText>
+                    @if (IsDefault)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Class="ml-2">Default</MudChip>
+                    }
+                </div>
+                <MudText Typo="Typo.caption" Color="Color.Primary" Style="white-space: nowrap; text-align: right; flex-shrink: 0;">Spooling Cap: @Profile.SpoolingCapGb GB</MudText>
+            </div>
             <MudChip T="string" Size="Size.Small" Class="mt-2">@Profile.ClientType</MudChip>
         </MudCardHeaderContent>
     </MudCardHeader>
