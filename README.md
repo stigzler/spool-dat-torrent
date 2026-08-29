@@ -11,6 +11,8 @@ Given how this works, there's one ask of you:
 
 Make sure you also 🌱
 
+Note: used agentic coding to expedite production.
+
 ## Screenshots
 
 ![Screenshot 2026 08 27 190115](dev/docs/images/Screenshot%202026-08-27%20190115.png)
@@ -139,6 +141,7 @@ services:
   spooldattorrent:
     image: ghcr.io/stigzler/spool-dat-torrent:latest
     container_name: spooldattorrent
+    user: "1000:1000" # Change these numbers to match your host's UID and GID
     environment:
       - SDT_ADMIN_PASSWORD=[your password here]
       - SDT_SECRET_KEY=[any random hash here]
