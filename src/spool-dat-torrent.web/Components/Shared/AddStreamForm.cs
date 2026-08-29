@@ -8,7 +8,6 @@ namespace SpoolDatTorrent.Web.Components.Shared
         public string? Name { get; set; }
         public string? Server { get; set; }
         public string? Target { get; set; }
-        public string? Filter { get; set; }
         public string Strategy { get; set; } = string.Empty;
 
         /// <summary>Optional per-stream settling time (seconds). Null inherits the global default.</summary>
@@ -19,6 +18,9 @@ namespace SpoolDatTorrent.Web.Components.Shared
 
         /// <summary>Comma-separated filename substrings to download last (e.g. "(Japan),(China)").</summary>
         public string? DePriorityTerms { get; set; }
+
+        /// <summary>Optional per-stream spooling cap (GB). Null inherits the fair-share split.</summary>
+        public long? SpoolingCapGb { get; set; }
 
         /// <summary>Server-side path to the uploaded .torrent file (if the user uploaded one).</summary>
         public string? TorrentFilePath { get; set; }

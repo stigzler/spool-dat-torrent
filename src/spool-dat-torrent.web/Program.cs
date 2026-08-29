@@ -96,6 +96,7 @@ namespace SpoolDatTorrent.Web
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.DeleteServerProfileCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.AddServerProfileCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.AddStreamCommand>();
+            builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.EditStreamCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.CancelStreamCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.SetStreamStatusCommand>();
             builder.Services.AddTransient<SpoolDatTorrent.Core.Commands.RetryStreamCommand>();

@@ -32,6 +32,10 @@ namespace SpoolDatTorrent.Core.DTOs
         [System.Text.Json.Serialization.JsonPropertyName("dlspeed")]
         public long Dlspeed { get; set; }
 
+        /// <summary>Per-torrent download limit in bytes/second (-1 = unlimited).</summary>
+        [System.Text.Json.Serialization.JsonPropertyName("dl_limit")]
+        public long DlLimit { get; set; }
+
         /// <summary>ETA in seconds (-1 if unknown).</summary>
         [System.Text.Json.Serialization.JsonPropertyName("eta")]
         public long Eta { get; set; }

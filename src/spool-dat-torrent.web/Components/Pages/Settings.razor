@@ -77,6 +77,15 @@
                              Class="sdt-numeric" />
         </MudItem>
         <MudItem xs="12" md="6">
+            <MudNumericField @bind-Value="_settings.RateLimitKbps"
+                             @bind-Value:after="ScheduleSave"
+                             Label="Rate Limit (KB/s)"
+                             HelperText="Global download throttle applied to streams using the RateLimit strategy. 0 = unlimited."
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="0" Max="1000000"
+                             Class="sdt-numeric" />
+        </MudItem>
+        <MudItem xs="12" md="6">
             <MudSwitch T="bool" @bind-Value="_settings.ConfirmDeleteConfirmation"
                        @bind-Value:after="ScheduleSave"
                        Label="Confirm before deleting a stream"

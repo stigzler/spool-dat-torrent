@@ -132,15 +132,10 @@ namespace SpoolDatTorrent.Core.Services
                     continue;
                 }
 
-                // Calculate the fair split of the cap for this specific server (converting GB to Bytes)
-                long serverCapBytes = profileSettings.SpoolingCapGb * 1024L * 1024L * 1024L;
-                long capPerStream = serverCapBytes / streamsOnThisServer.Count;
-
-                // Apply the safety margin: reserve a percentage of the cap for BitTorrent
-                // "boundary piece" overhead (the transient .parts file). Without this, a
-                // batch can exceed the cap because libtorrent downloads whole pieces that
-                // straddle selected/skipped file boundaries.
-                capPerStream = ApplySafetyMargin(capPerStream);
+                // Calculate the per-stream cap for this server. Streams with an explicit
+                // SpoolingCapGb override use that value; the remaining streams split the
+                // leftover server cap (server cap minus the explicit caps) fairly.
+                var capByStream = ComputePerStreamCaps(streamsOnThisServer, profileSettings);
 
                 // Get the authenticated client for this specific server
                 var torrentClient = _clientFactory.GetClient(profileName);
@@ -152,7 +147,7 @@ namespace SpoolDatTorrent.Core.Services
                     // Process each stream on this server.
                     foreach (var stream in streamsOnThisServer)
                     {
-                        await ProcessStreamAsync(stream, capPerStream, profileName, profileSettings, torrentClient, dbContext, cancellationToken);
+                        await ProcessStreamAsync(stream, capByStream[stream], profileName, profileSettings, torrentClient, dbContext, cancellationToken);
                     }
 
                     // The entire server group (auth + all streams) succeeded: reset the
@@ -228,7 +223,7 @@ namespace SpoolDatTorrent.Core.Services
             // overwritten by the stale in-memory list loaded at the start of this cycle.
             var freshStatuses = await dbContext.Streams
                 .AsNoTracking()
-                .Select(s => new { s.TorrentIdentifier, s.Status, s.MovedCount, s.TotalCount })
+                .Select(s => new { s.TorrentIdentifier, s.Status, s.MovedCount, s.TotalCount, s.IsRateLimited })
                 .ToDictionaryAsync(s => s.TorrentIdentifier, cancellationToken);
 
             var list = allStreams
@@ -241,6 +236,7 @@ namespace SpoolDatTorrent.Core.Services
                             snap.Status = fresh.Status.ToString();
                             snap.MovedCount = fresh.MovedCount;
                             snap.TotalCount = fresh.TotalCount;
+                            snap.IsRateLimited = fresh.IsRateLimited;
                         }
                         return snap;
                     }
@@ -250,7 +246,8 @@ namespace SpoolDatTorrent.Core.Services
                         Name = s.Name,
                         TorrentIdentifier = s.TorrentIdentifier,
                         StreamId = s.Id,
-                        Status = freshStatuses.TryGetValue(s.TorrentIdentifier, out var f) ? f.Status.ToString() : s.Status.ToString()
+                        Status = freshStatuses.TryGetValue(s.TorrentIdentifier, out var f) ? f.Status.ToString() : s.Status.ToString(),
+                        IsRateLimited = freshStatuses.TryGetValue(s.TorrentIdentifier, out var fr) && fr.IsRateLimited
                     };
                 })
                 .ToList();
@@ -520,6 +517,7 @@ namespace SpoolDatTorrent.Core.Services
             if (!await torrentClient.TorrentExistsAsync(stream.TorrentIdentifier, cancellationToken))
             {
                 await RecoverMissingTorrentAsync(stream, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
 
@@ -602,6 +600,8 @@ namespace SpoolDatTorrent.Core.Services
                 ClientPeers = torrentInfo?.NumPeers ?? 0,
                 ClientPeersTotal = torrentInfo?.NumIncomplete ?? 0,
                 ClientDownSpeed = torrentInfo?.Dlspeed ?? 0,
+                ClientDownloadLimitBytes = torrentInfo?.DlLimit ?? -1,
+                IsRateLimited = stream.IsRateLimited,
                 ClientEta = torrentInfo?.Eta ?? -1,
                 MovedCount = alreadyMoved.Count,
                 TotalCount = desiredFiles.Count,
@@ -690,6 +690,18 @@ namespace SpoolDatTorrent.Core.Services
                     _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
                     Logger.Log($"🚛 Moved {copiedIndices.Count} file(s) for stream '{stream.Name}'. Rebuilding torrent for next batch... Files: {FormatFileCsv(torrentFiles, copiedIndices)}");
                     LogStatus($"Moved {copiedIndices.Count} files. Rebuilding torrent for next batch...");
+
+                    // PAUSE strategy: after moving the batch, stop here and leave the torrent
+                    // paused. The stream is marked Paused so the engine stops processing it
+                    // (only Active streams are spooled); the user resumes it manually.
+                    if (stream.Strategy == SpoolingStrategy.Pause)
+                    {
+                        LogStatus($"Pause strategy: batch moved. Pausing stream '{stream.Name}' until resumed.");
+                        stream.Status = StreamLifecycleStatus.Paused;
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                        return;
+                    }
+
                     await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
                 }
                 else if (corruptSourceDetected)
@@ -1007,6 +1019,51 @@ namespace SpoolDatTorrent.Core.Services
             return names.Count == 0 ? "(none)" : string.Join(", ", names);
         }
 
+        /// <summary>
+        /// Computes the effective per-stream cap (in bytes) for a group of streams on the
+        /// same server. Streams with an explicit <see cref="TorrentStreamItem.SpoolingCapGb"/>
+        /// use that value (clamped to the server cap); the remaining streams split the
+        /// leftover server cap fairly. The safety margin is applied to every stream's cap.
+        /// </summary>
+        private Dictionary<TorrentStreamItem, long> ComputePerStreamCaps(
+            IReadOnlyList<TorrentStreamItem> streams,
+            TorrentServerProfile profileSettings)
+        {
+            long serverCapBytes = profileSettings.SpoolingCapGb * 1024L * 1024L * 1024L;
+
+            var result = new Dictionary<TorrentStreamItem, long>();
+
+            // Explicit caps first. Clamp each to the server cap (and to a positive value).
+            long explicitTotal = 0;
+            var inheriting = new List<TorrentStreamItem>();
+            foreach (var stream in streams)
+            {
+                if (stream.SpoolingCapGb.HasValue && stream.SpoolingCapGb.Value > 0)
+                {
+                    long explicitBytes = Math.Min(stream.SpoolingCapGb.Value, profileSettings.SpoolingCapGb) * 1024L * 1024L * 1024L;
+                    result[stream] = ApplySafetyMargin(explicitBytes);
+                    explicitTotal += explicitBytes;
+                }
+                else
+                {
+                    inheriting.Add(stream);
+                }
+            }
+
+            // Split the remaining cap among the streams without an explicit override.
+            if (inheriting.Count > 0)
+            {
+                long remainingBytes = Math.Max(0, serverCapBytes - explicitTotal);
+                long fairShare = remainingBytes / inheriting.Count;
+                foreach (var stream in inheriting)
+                {
+                    result[stream] = ApplySafetyMargin(fairShare);
+                }
+            }
+
+            return result;
+        }
+
         private long ApplySafetyMargin(long capBytes)
         {
             // Reserve a percentage of the cap for BitTorrent "boundary piece" overhead.
@@ -1139,13 +1196,47 @@ namespace SpoolDatTorrent.Core.Services
             string signature = $"{filesToDownload.Count}|{currentFootprint}";
             if (_lastAllocatedBatch.TryGetValue(stream.TorrentIdentifier, out var previous) && previous == signature)
             {
+                await ApplyRateLimitIfNeededAsync(stream, torrentClient, cancellationToken);
                 await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
                 return;
             }
 
             _lastAllocatedBatch[stream.TorrentIdentifier] = signature;
             Logger.Log($"📦 Allocated batch of {filesToDownload.Count} file(s) ({currentFootprint.ToGigabytes():0.#} GB) for stream '{stream.Name}'. Resuming download... Files: {FormatFileCsv(torrentFiles, filesToDownload)}");
+            await ApplyRateLimitIfNeededAsync(stream, torrentClient, cancellationToken);
             await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
+        }
+
+        /// <summary>
+        /// Applies (or clears) the download rate limit for a stream and updates the persisted
+        /// <see cref="TorrentStreamItem.IsRateLimited"/> flag. When the strategy is
+        /// <see cref="SpoolingStrategy.RateLimit"/> and the global limit is &gt; 0, the torrent
+        /// is throttled to that rate and the flag is set. Otherwise the limit is cleared
+        /// (0 = unlimited) and the flag is cleared, so a stream switched away from RateLimit
+        /// no longer stays throttled in the client.
+        /// </summary>
+        private async Task ApplyRateLimitIfNeededAsync(
+            TorrentStreamItem stream,
+            IBitTorrentClient torrentClient,
+            CancellationToken cancellationToken)
+        {
+            bool isRateLimitStrategy = stream.Strategy == SpoolingStrategy.RateLimit;
+            bool hasRate = _settings.RateLimitKbps > 0;
+            bool shouldLimit = isRateLimitStrategy && hasRate;
+            // -1 = unlimited (per the qBittorrent API); a positive value throttles to that
+            // many bytes/second.
+            long limitBytesPerSecond = shouldLimit ? _settings.RateLimitKbps * 1024 : -1;
+
+            if (isRateLimitStrategy && !hasRate)
+            {
+                Logger.LogWarning($"Stream '{stream.Name}' uses the RateLimit strategy but the global rate limit is 0 (unlimited). Set 'Rate Limit (KB/s)' in Settings to throttle it.");
+            }
+
+            await torrentClient.SetDownloadLimitAsync(stream.TorrentIdentifier, limitBytesPerSecond, cancellationToken);
+
+            // Track whether a limit is actually active so the UI can show a "Rate Limited"
+            // indicator that survives an app restart while the limit is applied.
+            stream.IsRateLimited = shouldLimit;
         }
 
         private async Task RebuildTorrentForNextBatchAsync(
