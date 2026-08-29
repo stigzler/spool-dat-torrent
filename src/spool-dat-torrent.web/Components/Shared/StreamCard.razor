@@ -24,6 +24,11 @@
                         break;
                 }
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">@ServerName</MudChip>
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" Style="white-space: nowrap; color: var(--mud-palette-text-secondary);">@Stream.Strategy</MudChip>
+                @if (IsRateLimited)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="Color.Warning" Style="white-space: nowrap;">Rate Limited</MudChip>
+                }
                 <MudText Typo="Typo.caption" Class="text-secondary" Style="white-space: nowrap;">@CreatedText</MudText>
                 <MudText Typo="Typo.caption" Color="Color.Primary" Style="white-space: nowrap;">Spool Size Cap: @CapText</MudText>
             </div>
@@ -39,6 +44,8 @@
                         <MudText Typo="Typo.caption" Class="text-secondary" Style="white-space: nowrap; opacity: 0.7;">ⓘ Use Global resume in top bar</MudText>
                     }
                     <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" StartIcon="@ActionIcon" OnClick="OnStatusChange" Disabled="GlobalPaused" Style="white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">@ActionLabel</MudButton>
+
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit" OnClick="OnEdit" Style="white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">Edit</MudButton>
 
                     <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.Close" OnClick="OnCancel" Style="white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">Cancel</MudButton>
                 }
@@ -173,6 +180,7 @@
     [Parameter] public EventCallback OnStatusChange { get; set; }
     [Parameter] public EventCallback OnCancel { get; set; }
     [Parameter] public EventCallback OnRemove { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
 
     private bool _expanded;
     private bool _showDownloadingOnly;
@@ -226,6 +234,14 @@
     private string StatusMessage => Live?.StatusMessage ?? string.Empty;
 
     private bool HasClientInfo => Live is { ClientSizeBytes: > 0 };
+
+    /// <summary>
+    /// <summary>
+    /// True when a rate limit is actually active on this stream's torrent. Prefers the live
+    /// snapshot (refreshed every poll) and falls back to the persisted flag when no live
+    /// snapshot is available yet.
+    /// </summary>
+    private bool IsRateLimited => Live?.IsRateLimited ?? Stream.IsRateLimited;
 
     private double ClientProgressPercent
     {
@@ -327,9 +343,22 @@
 
     private string CreatedText => Stream.CreatedUtc == default ? string.Empty : $"Created {Stream.CreatedUtc.ToLocalTime():dd MMM yyyy}";
 
-    private string CapText => Live is { AllocatedCapBytes: > 0 }
-        ? Live.AllocatedCapBytes.ToGigabytes().ToString("0.#") + " GB"
-        : "—";
+    private string CapText
+    {
+        get
+        {
+            if (Live is not { AllocatedCapBytes: > 0 })
+            {
+                return "—";
+            }
+
+            string size = Live.AllocatedCapBytes.ToGigabytes().ToString("0.#") + " GB";
+            // "(set)" when the stream has an explicit per-stream cap override, "(auto)" when
+            // it's the fair-share split of the server's cap.
+            string source = Stream.SpoolingCapGb.HasValue ? "(set)" : "(auto)";
+            return $"{size} {source}";
+        }
+    }
 
     private string DestinationText
     {

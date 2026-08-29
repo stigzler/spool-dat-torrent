@@ -22,6 +22,18 @@ namespace SpoolDatTorrent.Core.DTOs
         /// <summary>Comma-separated filename substrings to download last.</summary>
         public string DePriorityTerms { get; set; } = string.Empty;
 
+        /// <summary>Per-stream spooling cap override (GB). Null means inherit the fair-share split.</summary>
+        public long? SpoolingCapGb { get; set; }
+
+        /// <summary>Post-completion behavior (MoveFiles, Pause, RateLimit).</summary>
+        public SpoolDatTorrent.Core.Configuration.SpoolingStrategy Strategy { get; set; } = SpoolDatTorrent.Core.Configuration.SpoolingStrategy.MoveFiles;
+
+        /// <summary>Per-stream settling time (seconds). Null uses the global default.</summary>
+        public int? SettlingTimeSeconds { get; set; }
+
+        /// <summary>True when a rate limit is actually active on this stream's torrent.</summary>
+        public bool IsRateLimited { get; set; }
+
         /// <summary>Number of desired (DAT-matched) files already moved to the destination.</summary>
         public int MovedCount { get; set; }
 

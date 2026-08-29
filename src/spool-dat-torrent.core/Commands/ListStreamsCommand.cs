@@ -52,6 +52,10 @@ namespace SpoolDatTorrent.Core.Commands
                     CreatedUtc = s.CreatedUtc,
                     PriorityTerms = s.PriorityTerms,
                     DePriorityTerms = s.DePriorityTerms,
+                    SpoolingCapGb = s.SpoolingCapGb,
+                    Strategy = s.Strategy,
+                    SettlingTimeSeconds = s.SettlingTimeSeconds,
+                    IsRateLimited = s.IsRateLimited,
                     MovedCount = s.MovedCount,
                     TotalCount = s.TotalCount
                 })

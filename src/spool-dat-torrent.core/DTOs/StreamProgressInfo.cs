@@ -78,6 +78,14 @@ namespace SpoolDatTorrent.Core.DTOs
         /// <summary>Download speed in bytes/second as reported by the client.</summary>
         public long ClientDownSpeed { get; set; }
 
+        /// <summary>Per-torrent download limit in bytes/second as reported by the client
+        /// (-1 = unlimited). Used to show a "rate limited" indicator on the stream card.</summary>
+        public long ClientDownloadLimitBytes { get; set; } = -1;
+
+        /// <summary>True when a rate limit is actually active on this stream's torrent
+        /// (set by the engine when it throttles a batch).</summary>
+        public bool IsRateLimited { get; set; }
+
         /// <summary>ETA in seconds as reported by the client (-1 if unknown).</summary>
         public long ClientEta { get; set; }
     }

@@ -1,0 +1,152 @@
+@using SpoolDatTorrent.Core.Configuration
+@using SpoolDatTorrent.Core.DTOs
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.body2" Class="text-secondary">
+                Edit settings for stream <b>@Stream.Name</b>. Changes apply on the next engine
+                poll cycle.
+            </MudText>
+
+            <MudTextField @bind-Value="_name"
+                          Label="Name"
+                          HelperText="A friendly display name (used in logs/UI only; not part of the output path)."
+                          Variant="Variant.Outlined" FullWidth="true" />
+
+            <MudSelect T="SpoolingStrategy" @bind-Value="_strategy"
+                       Label="Strategy"
+                       HelperText="MoveFiles: move each completed batch to the destination and continue. Pause: stop after the current batch and wait for manual resume. RateLimit: download at the global rate limit (Settings)."
+                       Variant="Variant.Outlined" FullWidth="true">
+                @foreach (var strategy in Enum.GetValues<SpoolingStrategy>())
+                {
+                    <MudSelectItem Value="@strategy">@strategy</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudStack Row="true" Spacing="3">
+                <MudNumericField T="int?" @bind-Value="_settlingTimeSeconds"
+                                 Label="Settling Time (seconds)"
+                                 HelperText="How long to wait after pausing before moving completed files. Leave blank to use the global default."
+                                 Variant="Variant.Outlined" FullWidth="true"
+                                 Min="1" Max="480" />
+            </MudStack>
+
+            <MudStack Row="true" Spacing="3">
+                <MudTextField @bind-Value="_priorityTerms"
+                              Label="Priority Terms"
+                              HelperText="Download first, e.g. (USA),(Europe),(World). Slows performance."
+                              Variant="Variant.Outlined" FullWidth="true" />
+                <MudTextField @bind-Value="_dePriorityTerms"
+                              Label="De-priority Terms"
+                              HelperText="Download last, e.g. (Japan),(China). Slows performance."
+                              Variant="Variant.Outlined" FullWidth="true" />
+            </MudStack>
+
+            <MudNumericField T="long?" @bind-Value="_spoolingCapGb"
+                             @bind-Value:after="OnCapChanged"
+                             Label="Spooling Cap (GB)"
+                             HelperText="@CapHelperText"
+                             Variant="Variant.Outlined" FullWidth="true"
+                             Min="1" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Save" Disabled="@(_capError != null)">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialogInstance { get; set; } = default!;
+
+    [Parameter] public StreamDetails Stream { get; set; } = default!;
+
+    [Inject] private GlobalSpoolSettings Settings { get; set; } = default!;
+
+    private string _name = string.Empty;
+    private SpoolingStrategy _strategy = SpoolingStrategy.MoveFiles;
+    private int? _settlingTimeSeconds;
+    private string _priorityTerms = string.Empty;
+    private string _dePriorityTerms = string.Empty;
+    private long? _spoolingCapGb;
+    private string? _capError;
+
+    protected override void OnInitialized()
+    {
+        _name = Stream.Name;
+        _strategy = Stream.Strategy;
+        _settlingTimeSeconds = Stream.SettlingTimeSeconds;
+        _priorityTerms = Stream.PriorityTerms;
+        _dePriorityTerms = Stream.DePriorityTerms;
+        _spoolingCapGb = Stream.SpoolingCapGb;
+    }
+
+    private long ServerCapGb
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Stream.ServerProfileId) &&
+                Settings.TorrentServers.TryGetValue(Stream.ServerProfileId, out var profile))
+            {
+                return profile.SpoolingCapGb;
+            }
+            return 0;
+        }
+    }
+
+    private string CapHelperText
+    {
+        get
+        {
+            if (_capError != null)
+            {
+                return _capError;
+            }
+
+            long serverCap = ServerCapGb;
+            return $"Maximum spool size for this stream. Leave blank to share the server's {serverCap} GB cap with other streams. Cannot exceed {serverCap} GB.";
+        }
+    }
+
+    private void OnCapChanged()
+    {
+        _capError = ValidateCap(_spoolingCapGb);
+    }
+
+    private string? ValidateCap(long? capGb)
+    {
+        if (!capGb.HasValue)
+        {
+            return null;
+        }
+
+        if (capGb.Value <= 0)
+        {
+            return "Spooling cap must be greater than 0 GB.";
+        }
+
+        long serverCap = ServerCapGb;
+        if (serverCap > 0 && capGb.Value > serverCap)
+        {
+            return $"Spooling cap cannot exceed the server profile's cap of {serverCap} GB.";
+        }
+
+        return null;
+    }
+
+    private void Cancel() => MudDialogInstance.Close(DialogResult.Cancel());
+
+    private void Save()
+    {
+        MudDialogInstance.Close(DialogResult.Ok(new EditStreamForm
+        {
+            Name = _name,
+            Strategy = _strategy,
+            SettlingTimeSeconds = _settlingTimeSeconds,
+            PriorityTerms = _priorityTerms,
+            DePriorityTerms = _dePriorityTerms,
+            SpoolingCapGb = _spoolingCapGb
+        }));
+    }
+}
