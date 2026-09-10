@@ -1,4 +1,4 @@
-# SpoolDatTorrent — Project Knowledge Base
+the attached document - remind m# SpoolDatTorrent — Project Knowledge Base
 
 > **Purpose of this document:** This is the authoritative "bring-me-up-to-speed" reference for any fresh AI/developer context. It captures the project's goals, architecture, technical decisions, idiosyncrasies, current state, and outstanding work. Read this first before making any changes.
 

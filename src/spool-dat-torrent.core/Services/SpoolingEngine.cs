@@ -702,7 +702,7 @@ namespace SpoolDatTorrent.Core.Services
                         return;
                     }
 
-                    await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                    await RebuildTorrentForNextBatchAsync(stream, torrentContentPath, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
                 }
                 else if (corruptSourceDetected)
                 {
@@ -733,7 +733,7 @@ namespace SpoolDatTorrent.Core.Services
                     {
                         _drainFailures.TryRemove(stream.TorrentIdentifier, out _);
                         LogStatus($"Source data missing; forcing a re-check to resync with qBittorrent...");
-                        await RebuildTorrentForNextBatchAsync(stream, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                        await RebuildTorrentForNextBatchAsync(stream, torrentContentPath, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
                     }
                     else
                     {
@@ -1241,6 +1241,7 @@ namespace SpoolDatTorrent.Core.Services
 
         private async Task RebuildTorrentForNextBatchAsync(
             TorrentStreamItem stream,
+            string torrentContentPath,
             string torrentSavePath,
             string torrentName,
             IReadOnlyList<TorrentFileDto> torrentFiles,
@@ -1257,7 +1258,7 @@ namespace SpoolDatTorrent.Core.Services
             // 1b. qBittorrent deletes files asynchronously. Wait until the scratch files are
             //     actually gone from disk before re-adding, otherwise the re-add finds stale
             //     files and triggers a slow hash check ("checking" phase).
-            await WaitForScratchFilesDeletedAsync(torrentSavePath, torrentFiles, profileSettings, cancellationToken);
+            await WaitForScratchFilesDeletedAsync(torrentContentPath, torrentSavePath, torrentFiles, profileSettings, cancellationToken);
 
             // 2. Re-add the SAME torrent source (same info-hash => same swarm), paused.
             //    Prefer the cached .torrent copy (which is robust to the original being
@@ -1371,16 +1372,24 @@ namespace SpoolDatTorrent.Core.Services
         }
 
         private async Task WaitForScratchFilesDeletedAsync(
+            string torrentContentPath,
             string torrentSavePath,
             IReadOnlyList<TorrentFileDto> torrentFiles,
             TorrentServerProfile profileSettings,
             CancellationToken cancellationToken)
         {
             // The files we care about are the ones that were actually downloaded (progress >= 1).
-            // We wait until none of them exist on the scratch drive anymore.
+            // They may live in the incomplete folder (content_path) or the completed folder
+            // (save_path) depending on qBittorrent's "keep incomplete torrents in" setting, so
+            // check both locations. We wait until none of them exist on the scratch drive anymore.
             var downloadedPaths = torrentFiles
                 .Where(f => f.Progress >= 1.0f)
-                .Select(f => TranslateToLocalPath(torrentSavePath, f.Name, profileSettings))
+                .SelectMany(f => new[]
+                {
+                    TranslateToLocalPath(torrentContentPath, f.Name, profileSettings),
+                    TranslateToLocalPath(torrentSavePath, f.Name, profileSettings)
+                })
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             if (downloadedPaths.Count == 0)
