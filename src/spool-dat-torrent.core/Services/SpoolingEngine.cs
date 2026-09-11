@@ -85,6 +85,10 @@ namespace SpoolDatTorrent.Core.Services
         // to avoid logging "Allocated batch" on every poll cycle when nothing changed.
         private readonly ConcurrentDictionary<string, string> _lastAllocatedBatch = new(StringComparer.OrdinalIgnoreCase);
 
+        // Last qBittorrent state observed per torrent, so diagnostic logging only fires on
+        // state *changes* (not every 2s poll, which floods the log).
+        private readonly ConcurrentDictionary<string, string> _lastLoggedState = new(StringComparer.OrdinalIgnoreCase);
+
         public SpoolingEngine(
             IServiceScopeFactory scopeFactory,
             IBitTorrentClientFactory clientFactory,
@@ -543,14 +547,19 @@ namespace SpoolDatTorrent.Core.Services
             // show an accurate download progress bar and what qBittorrent is doing.
             var torrentInfo = await torrentClient.GetTorrentInfoAsync(stream.TorrentIdentifier, cancellationToken);
 
-            // DIAGNOSTIC: log qBittorrent's reported state and paths every cycle so we can
-            // correlate the error/checking/moving cycle with where files actually live.
+            // DIAGNOSTIC: log qBittorrent's state only when it CHANGES (not every poll), so
+            // the log shows the download→moving→checking→error cycle without flooding.
             if (torrentInfo != null)
             {
-                Logger.LogDebug($"[DIAG] stream='{stream.Name}' state='{torrentInfo.State}' downloaded={torrentInfo.Downloaded}/{torrentInfo.Size} content_path='{torrentContentPath}' save_path='{torrentSavePath}'");
-                if (IsErrorState(torrentInfo.State) || string.Equals(torrentInfo.State, "moving", StringComparison.OrdinalIgnoreCase))
+                string state = torrentInfo.State ?? "unknown";
+                if (_lastLoggedState.TryGetValue(stream.TorrentIdentifier, out var prev) && prev == state)
                 {
-                    Logger.LogWarning($"⚠️ [DIAG] stream='{stream.Name}' state='{torrentInfo.State}' content_path='{torrentContentPath}' save_path='{torrentSavePath}'");
+                    // unchanged — skip
+                }
+                else
+                {
+                    _lastLoggedState[stream.TorrentIdentifier] = state;
+                    Logger.LogWarning($"🔎 [STATE] '{stream.Name}': {state} (downloaded {torrentInfo.Downloaded}/{torrentInfo.Size}, content='{torrentContentPath}', save='{torrentSavePath}')");
                 }
             }
 
@@ -1055,7 +1064,19 @@ namespace SpoolDatTorrent.Core.Services
                 .Select(f => Path.GetFileName(f.Name))
                 .ToList();
 
-            return names.Count == 0 ? "(none)" : string.Join(", ", names);
+            if (names.Count == 0)
+            {
+                return "(none)";
+            }
+
+            // Truncate long lists so the log stays readable (a batch can be hundreds of files).
+            const int maxShown = 5;
+            if (names.Count <= maxShown)
+            {
+                return string.Join(", ", names);
+            }
+
+            return string.Join(", ", names.Take(maxShown)) + $", … (+{names.Count - maxShown} more)";
         }
 
         /// <summary>
