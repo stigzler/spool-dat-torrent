@@ -686,31 +686,31 @@ namespace SpoolDatTorrent.Core.Services
             // rebuild boundary pieces into .parts files for the files we skip.
             if (readyToMove.Any())
             {
+                // Wait for qBittorrent to finish relocating the completed files from the
+                // incomplete folder to the completed folder (state "moving"). Large batches
+                // (many GB) can take minutes, so use a generous timeout. If it doesn't finish,
+                // return and retry next cycle rather than copying 0-byte files.
+                LogStatus($"Waiting for qBittorrent to finish moving {readyToMove.Count} completed files to the completed folder...");
+                bool settled = await WaitForMoveToCompleteAsync(stream.TorrentIdentifier, TimeSpan.FromMinutes(10), torrentClient, cancellationToken);
+                if (!settled)
+                {
+                    LogStatus($"Torrent still 'moving'; will retry next cycle.");
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    return;
+                }
+
+                // Files are now stable in the completed folder. Pause and copy them out.
                 LogStatus($"Halting torrent to move {readyToMove.Count} completed files...");
                 await torrentClient.PauseTorrentAsync(stream.TorrentIdentifier, cancellationToken);
 
-                // Wait for qBittorrent to finish relocating the completed files from the
-                // incomplete folder to the completed folder (state "moving"), so we copy from
-                // a stable location. The per-stream settling time (falling back to the global
-                // default) acts as the timeout bound for this wait.
-                int settleSeconds = stream.SettlingTimeSeconds ?? _settings.SettlingTimeSeconds;
-                var settleTimeout = TimeSpan.FromSeconds(Math.Max(1, settleSeconds));
-                bool settled = await WaitForMoveToCompleteAsync(stream.TorrentIdentifier, settleTimeout, torrentClient, cancellationToken);
-                if (!settled)
-                {
-                    LogStatus($"Torrent still 'moving' after {settleSeconds}s; proceeding (copy verifies size).");
-                }
-
                 var copiedIndices = new List<int>();
+                var failedFiles = new List<string>();
                 bool corruptSourceDetected = false;
 
                 foreach (var file in readyToMove)
                 {
                     string destinationPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
                     string sourcePath = ResolveSourcePath(torrentSavePath, file.Name, profileSettings);
-
-                    LogStatus($"Moving file: {Path.GetFileName(file.Name)}...");
-                    Logger.LogDebug($"[DRAIN] source='{sourcePath}' dest='{destinationPath}' expected={file.Size}");
 
                     try
                     {
@@ -728,9 +728,25 @@ namespace SpoolDatTorrent.Core.Services
                             corruptSourceDetected = true;
                         }
 
-                        LogStatus($"Move failed for '{Path.GetFileName(file.Name)}' (will retry next loop): {ex.Message} [source: {sourcePath}]");
-                        Logger.LogDebug($"[DRAIN] move failed: {ex.Message}");
+                        failedFiles.Add(Path.GetFileName(file.Name));
                     }
+                }
+
+                // Summarise the copy outcome once, instead of logging every file.
+                if (failedFiles.Count > 0)
+                {
+                    Logger.LogWarning($"⚠️ Move summary for '{stream.Name}': {copiedIndices.Count} copied, {failedFiles.Count} failed. Failed: {string.Join(", ", failedFiles.Take(5))}{(failedFiles.Count > 5 ? $" … (+{failedFiles.Count - 5} more)" : "")}");
+                }
+
+                // CRITICAL: only delete the torrent (and its files) when EVERY completed file
+                // was copied successfully. If any failed, leave the torrent intact and retry
+                // next cycle — otherwise the failed files would be lost when the torrent is
+                // deleted.
+                if (failedFiles.Count > 0)
+                {
+                    LogStatus($"{failedFiles.Count} file(s) failed to copy; leaving torrent intact and retrying next cycle.");
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    return;
                 }
 
                 if (copiedIndices.Any())
