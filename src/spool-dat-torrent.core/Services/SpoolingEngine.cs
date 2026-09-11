@@ -543,6 +543,17 @@ namespace SpoolDatTorrent.Core.Services
             // show an accurate download progress bar and what qBittorrent is doing.
             var torrentInfo = await torrentClient.GetTorrentInfoAsync(stream.TorrentIdentifier, cancellationToken);
 
+            // DIAGNOSTIC: log qBittorrent's reported state and paths every cycle so we can
+            // correlate the error/checking/moving cycle with where files actually live.
+            if (torrentInfo != null)
+            {
+                Logger.LogDebug($"[DIAG] stream='{stream.Name}' state='{torrentInfo.State}' downloaded={torrentInfo.Downloaded}/{torrentInfo.Size} content_path='{torrentContentPath}' save_path='{torrentSavePath}'");
+                if (IsErrorState(torrentInfo.State) || string.Equals(torrentInfo.State, "moving", StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.LogWarning($"⚠️ [DIAG] stream='{stream.Name}' state='{torrentInfo.State}' content_path='{torrentContentPath}' save_path='{torrentSavePath}'");
+                }
+            }
+
             // SELF-HEAL: qBittorrent can put a torrent into an "error" state when its
             // ".unwanted" folder moves a skipped file out from under libtorrent (breaking a
             // boundary-piece partfile handle → "partfile_read ... Bad file descriptor"). This
