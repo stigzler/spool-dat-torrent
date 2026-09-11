@@ -66,6 +66,17 @@ namespace SpoolDatTorrent.Core.Services
         // Error with an actionable message instead of looping indefinitely.
         private const int MaxDrainFailuresBeforeError = 6;
 
+        // Consecutive qBittorrent "error" states observed per torrent. qBittorrent can put a
+        // torrent into an "error" state when its ".unwanted" folder moves a skipped file out
+        // from under libtorrent (breaking a boundary-piece partfile handle → "Bad file
+        // descriptor"). We self-heal by forcing a recheck; if the error keeps coming back we
+        // rebuild the torrent (delete+readd) to fully re-establish file handles.
+        private readonly ConcurrentDictionary<string, int> _errorRecoveries = new(StringComparer.OrdinalIgnoreCase);
+
+        // Number of consecutive error-state observations before we escalate from a recheck to
+        // a full delete+readd rebuild.
+        private const int MaxErrorRecoveriesBeforeRebuild = 3;
+
         // Whether errored streams have already been re-activated for this engine instance.
         // A fresh engine = a restart, so errored streams are retried once at startup.
         private bool _hasReactivatedOnStart;
@@ -531,6 +542,23 @@ namespace SpoolDatTorrent.Core.Services
             // Fetch the client-reported torrent info (size, downloaded, state) so the UI can
             // show an accurate download progress bar and what qBittorrent is doing.
             var torrentInfo = await torrentClient.GetTorrentInfoAsync(stream.TorrentIdentifier, cancellationToken);
+
+            // SELF-HEAL: qBittorrent can put a torrent into an "error" state when its
+            // ".unwanted" folder moves a skipped file out from under libtorrent (breaking a
+            // boundary-piece partfile handle → "partfile_read ... Bad file descriptor"). This
+            // is not a fatal condition — a recheck re-opens the file handles and lets the
+            // download continue. If the error keeps recurring, escalate to a full delete+readd
+            // rebuild to fully re-establish the file tree.
+            if (torrentInfo != null && IsErrorState(torrentInfo.State))
+            {
+                await RecoverFromErrorStateAsync(stream, torrentSavePath, torrentContentPath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return;
+            }
+
+            // The torrent is healthy — clear any stale error-recovery counter so a future
+            // (unrelated) error starts fresh rather than inheriting an old escalation count.
+            _errorRecoveries.TryRemove(stream.TorrentIdentifier, out _);
 
             // Destination root resolution:
             //   - Explicit per-stream target (SpoolingTargetOverride): files go directly
@@ -1187,13 +1215,12 @@ namespace SpoolDatTorrent.Core.Services
                 }
             }
 
-            if (filesToSkip.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToSkip, 0, cancellationToken);
-            if (filesToDownload.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToDownload, 1, cancellationToken);
-
-            // Only log when the batch actually changes. The engine re-runs allocation every
-            // poll cycle (re-applying priorities), so logging unconditionally would spam the
-            // standard log with identical "Allocated batch" lines.
-            string signature = $"{filesToDownload.Count}|{currentFootprint}";
+            // Build a precise signature of the batch (which files to download and which to
+            // skip) so we only re-apply priorities when the batch actually changes. Re-sending
+            // priority 0 every poll cycle re-triggers qBittorrent's ".unwanted" move for
+            // skipped files, which invalidates libtorrent's partfile handles and causes
+            // "partfile_read ... Bad file descriptor" errors.
+            string signature = string.Join(",", filesToDownload) + "|" + string.Join(",", filesToSkip);
             if (_lastAllocatedBatch.TryGetValue(stream.TorrentIdentifier, out var previous) && previous == signature)
             {
                 await ApplyRateLimitIfNeededAsync(stream, torrentClient, cancellationToken);
@@ -1202,6 +1229,10 @@ namespace SpoolDatTorrent.Core.Services
             }
 
             _lastAllocatedBatch[stream.TorrentIdentifier] = signature;
+
+            if (filesToSkip.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToSkip, 0, cancellationToken);
+            if (filesToDownload.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToDownload, 1, cancellationToken);
+
             Logger.Log($"📦 Allocated batch of {filesToDownload.Count} file(s) ({currentFootprint.ToGigabytes():0.#} GB) for stream '{stream.Name}'. Resuming download... Files: {FormatFileCsv(torrentFiles, filesToDownload)}");
             await ApplyRateLimitIfNeededAsync(stream, torrentClient, cancellationToken);
             await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);
@@ -1309,6 +1340,60 @@ namespace SpoolDatTorrent.Core.Services
             }
 
             await AllocateBatchAsync(stream, freshFiles, desiredGames, alreadyMoved, allocatedCapBytes, torrentClient, cancellationToken);
+        }
+
+        /// <summary>
+        /// True when qBittorrent reports a torrent in a state that indicates a file-level
+        /// error (e.g. "error", "missingFiles"). These are the states we self-heal from.
+        /// </summary>
+        private static bool IsErrorState(string state)
+        {
+            return string.Equals(state, "error", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(state, "missingFiles", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Self-heal a torrent that qBittorrent has put into an "error" state. The most common
+        /// trigger is qBittorrent's ".unwanted" folder moving a skipped file out from under
+        /// libtorrent, which breaks a boundary-piece partfile handle ("Bad file descriptor").
+        /// A recheck re-opens the file handles and usually clears the error. If the error keeps
+        /// recurring, we escalate to a full delete+readd rebuild to re-establish the file tree.
+        /// </summary>
+        private async Task RecoverFromErrorStateAsync(
+            TorrentStreamItem stream,
+            string torrentSavePath,
+            string torrentContentPath,
+            string torrentName,
+            IReadOnlyList<TorrentFileDto> torrentFiles,
+            TorrentServerProfile profileSettings,
+            HashSet<string> desiredGames,
+            long allocatedCapBytes,
+            IBitTorrentClient torrentClient,
+            CancellationToken cancellationToken)
+        {
+            int failures = _errorRecoveries.AddOrUpdate(stream.TorrentIdentifier, 1, (_, c) => c + 1);
+            Logger.LogWarning($"⚠️ Torrent '{stream.Name}' entered an error state (attempt {failures}). Self-healing...");
+
+            if (failures >= MaxErrorRecoveriesBeforeRebuild)
+            {
+                // Repeated errors — a recheck isn't enough. Rebuild the torrent (delete+readd)
+                // to fully re-establish libtorrent's file handles and partfiles.
+                _errorRecoveries.TryRemove(stream.TorrentIdentifier, out _);
+                Logger.LogWarning($"⚠️ Torrent '{stream.Name}' error state persisted after {failures} attempts. Rebuilding torrent (delete+readd) to recover...");
+                LogStatus($"Error state persisted; rebuilding torrent to recover...");
+                await RebuildTorrentForNextBatchAsync(stream, torrentContentPath, torrentSavePath, torrentName, torrentFiles, profileSettings, desiredGames, allocatedCapBytes, torrentClient, cancellationToken);
+                return;
+            }
+
+            // First attempts: force a recheck. This re-opens the file handles that the
+            // ".unwanted" move invalidated, which usually clears the error without losing
+            // any downloaded data.
+            Logger.LogWarning($"⚠️ Torrent '{stream.Name}': forcing recheck to recover from error state (attempt {failures}/{MaxErrorRecoveriesBeforeRebuild}).");
+            LogStatus($"Forcing recheck to recover from error state (attempt {failures})...");
+            await torrentClient.RecheckTorrentAsync(stream.TorrentIdentifier, cancellationToken);
+
+            // Give qBittorrent time to complete the recheck before the next poll cycle.
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
 
         private async Task RecoverMissingTorrentAsync(
