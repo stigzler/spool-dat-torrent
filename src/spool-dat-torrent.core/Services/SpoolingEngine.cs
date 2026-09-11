@@ -707,6 +707,10 @@ namespace SpoolDatTorrent.Core.Services
                 var failedFiles = new List<string>();
                 bool corruptSourceDetected = false;
 
+                int totalToMove = readyToMove.Count;
+                int processed = 0;
+                var lastStatusUpdate = DateTime.MinValue;
+
                 foreach (var file in readyToMove)
                 {
                     string destinationPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
@@ -729,6 +733,16 @@ namespace SpoolDatTorrent.Core.Services
                         }
 
                         failedFiles.Add(Path.GetFileName(file.Name));
+                    }
+
+                    processed++;
+
+                    // Update the live status with copy progress, throttled to once per second
+                    // so the UI shows movement without flooding the debug log.
+                    if ((DateTime.UtcNow - lastStatusUpdate).TotalSeconds >= 1 || processed == totalToMove)
+                    {
+                        lastStatusUpdate = DateTime.UtcNow;
+                        LogStatus($"Moving files to destination: {processed}/{totalToMove} ({copiedIndices.Count} done, {failedFiles.Count} failed)...");
                     }
                 }
 
@@ -1431,6 +1445,17 @@ namespace SpoolDatTorrent.Core.Services
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var info = await torrentClient.GetTorrentInfoAsync(torrentId, cancellationToken);
+
+                // Keep the live snapshot's client state (and status message) in sync while we
+                // block here, so the UI chip reflects qBittorrent's "moving" → "done" transition
+                // instead of freezing on the state captured at the start of the cycle.
+                if (info != null && _progressSnapshots.TryGetValue(torrentId, out var snap))
+                {
+                    snap.ClientState = info.State;
+                    snap.ClientDownloadedBytes = info.Downloaded;
+                    snap.StatusMessage = $"qBittorrent: {info.State}";
+                }
+
                 if (info != null && !IsTransientState(info.State))
                 {
                     return true;
