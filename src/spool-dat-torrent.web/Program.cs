@@ -44,7 +44,7 @@ namespace SpoolDatTorrent.Web
                 e.SetObserved();
             };
 
-            Logger.Log("🚀 SpoolDatTorrent web host starting...");
+            Logger.Log($"🚀 SpoolDatTorrent web host starting... (v{GetAppVersion()})");
             var builder = WebApplication.CreateBuilder(args);
 
             // Add services to the container.
@@ -174,6 +174,19 @@ namespace SpoolDatTorrent.Web
                 return Results.Redirect("/login");
             });
 
+            // Download the current log file. Requires an authenticated admin session so the
+            // log (which may contain server hostnames/paths) isn't exposed publicly.
+            app.MapGet("/download/log", (HttpContext ctx) =>
+            {
+                var path = Logger.LogFilePath;
+                if (!File.Exists(path))
+                {
+                    return Results.NotFound("Log file not found.");
+                }
+
+                return Results.File(path, "text/plain", "SpoolDatTorrent.log");
+            }).RequireAuthorization();
+
             app.MapStaticAssets();
             app.MapRazorComponents<App>()
                 .AddInteractiveServerRenderMode();
@@ -185,6 +198,11 @@ namespace SpoolDatTorrent.Web
                 Logger.Log("🛑 SpoolDatTorrent web host is shutting down..."));
 
             app.Run();
+        }
+
+        private static string GetAppVersion()
+        {
+            return System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?";
         }
     }
 }

@@ -28,6 +28,9 @@ namespace SpoolDatTorrent.Core.Helpers
         private static readonly string LogDirectory;
         private static readonly string LogPath;
 
+        /// <summary>Full path to the current log file (exposed so the web UI can offer a download).</summary>
+        public static string LogFilePath => LogPath;
+
         // Rotation: archive to a dated file when the day changes, and size-rotate within a
         // day so a long-running Docker container never grows the log unbounded.
         private const long MaxFileSizeBytes = 5L * 1024 * 1024; // 5 MB
