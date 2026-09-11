@@ -358,8 +358,23 @@ namespace SpoolDatTorrent.Core.Services
 
         private string TranslateToLocalPath(string torrentSavePath, string fileRelativeName, TorrentServerProfile profile)
         {
+            // qBittorrent's file "name" includes the torrent's root folder as its first
+            // segment, while content_path/save_path may ALSO end with that same folder.
+            // Naively combining them doubles the folder (e.g. ".../Minerva_Myrient/
+            // Minerva_Myrient/..."), which points at a non-existent file. Strip the leading
+            // segment when it duplicates the base path's trailing segment.
+            string normalizedFile = fileRelativeName.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+            string baseName = Path.GetFileName(torrentSavePath.TrimEnd('/', '\\'));
+            var segments = normalizedFile.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (segments.Count > 0 && !string.IsNullOrEmpty(baseName) &&
+                string.Equals(segments[0], baseName, StringComparison.OrdinalIgnoreCase))
+            {
+                segments.RemoveAt(0);
+                normalizedFile = string.Join(Path.DirectorySeparatorChar, segments);
+            }
+
             // 1. Combine qBittorrent's root save directory with the relative file path
-            string absoluteReportedPath = Path.Combine(torrentSavePath, fileRelativeName);
+            string absoluteReportedPath = Path.Combine(torrentSavePath, normalizedFile);
 
             // 2. Apply container mapping if it exists
             if (profile.ClientDownloadsMapping != null &&
@@ -411,43 +426,17 @@ namespace SpoolDatTorrent.Core.Services
         }
 
         /// <summary>
-        /// Resolve the actual on-disk source path for a file, tolerating the race where
-        /// qBittorrent moves a file from the incomplete folder (content_path) to the
-        /// completed folder (save_path) between our poll and our copy. Checks both candidate
-        /// locations and returns the first that exists with the expected size.
+        /// Resolve the on-disk source path for a completed file. sdt waits for qBittorrent's
+        /// "moving" state to clear (see <see cref="WaitForMoveToCompleteAsync"/>) before
+        /// copying, so the file is guaranteed to be in the completed folder (save_path). We
+        /// therefore read from save_path only — no incomplete-folder fallback.
         /// </summary>
         private string ResolveSourcePath(
-            string torrentContentPath,
             string torrentSavePath,
             string fileRelativeName,
-            long expectedSize,
             TorrentServerProfile profile)
         {
-            var candidates = new[]
-            {
-                TranslateToLocalPath(torrentContentPath, fileRelativeName, profile),
-                TranslateToLocalPath(torrentSavePath, fileRelativeName, profile)
-            };
-
-            foreach (var candidate in candidates)
-            {
-                try
-                {
-                    var info = new FileInfo(candidate);
-                    if (info.Exists && info.Length == expectedSize)
-                    {
-                        return candidate;
-                    }
-                }
-                catch (IOException)
-                {
-                    // Skip invalid paths.
-                }
-            }
-
-            // None found — return the primary (content) candidate so the caller's error
-            // message and "Actual: N" reflects the most likely location.
-            return candidates[0];
+            return TranslateToLocalPath(torrentSavePath, fileRelativeName, profile);
         }
 
         // Used by Web/Docker: Runs continuously in the background
@@ -700,11 +689,17 @@ namespace SpoolDatTorrent.Core.Services
                 LogStatus($"Halting torrent to move {readyToMove.Count} completed files...");
                 await torrentClient.PauseTorrentAsync(stream.TorrentIdentifier, cancellationToken);
 
-                // Wait for the client to finish writing/flushing the completed files before
-                // copying them. Uses the stream's per-stream settling time, falling back to
-                // the global default.
+                // Wait for qBittorrent to finish relocating the completed files from the
+                // incomplete folder to the completed folder (state "moving"), so we copy from
+                // a stable location. The per-stream settling time (falling back to the global
+                // default) acts as the timeout bound for this wait.
                 int settleSeconds = stream.SettlingTimeSeconds ?? _settings.SettlingTimeSeconds;
-                await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, settleSeconds)), cancellationToken);
+                var settleTimeout = TimeSpan.FromSeconds(Math.Max(1, settleSeconds));
+                bool settled = await WaitForMoveToCompleteAsync(stream.TorrentIdentifier, settleTimeout, torrentClient, cancellationToken);
+                if (!settled)
+                {
+                    LogStatus($"Torrent still 'moving' after {settleSeconds}s; proceeding (copy verifies size).");
+                }
 
                 var copiedIndices = new List<int>();
                 bool corruptSourceDetected = false;
@@ -712,7 +707,7 @@ namespace SpoolDatTorrent.Core.Services
                 foreach (var file in readyToMove)
                 {
                     string destinationPath = GetDestinationPath(destinationRoot, prefixToStrip, file.Name);
-                    string sourcePath = ResolveSourcePath(torrentContentPath, torrentSavePath, file.Name, file.Size, profileSettings);
+                    string sourcePath = ResolveSourcePath(torrentSavePath, file.Name, profileSettings);
 
                     LogStatus($"Moving file: {Path.GetFileName(file.Name)}...");
                     Logger.LogDebug($"[DRAIN] source='{sourcePath}' dest='{destinationPath}' expected={file.Size}");
@@ -1388,6 +1383,45 @@ namespace SpoolDatTorrent.Core.Services
         {
             return string.Equals(state, "error", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(state, "missingFiles", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// True while qBittorrent is relocating files (incomplete → complete) or hash-checking.
+        /// While these are in progress the files are not yet stable in the completed folder, so
+        /// sdt must wait before copying.
+        /// </summary>
+        private static bool IsTransientState(string state)
+        {
+            return string.Equals(state, "moving", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(state, "checkingUP", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(state, "checkingDL", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(state, "checkingResumeData", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// Polls qBittorrent until the torrent leaves the "moving"/"checking" states (i.e. the
+        /// incomplete→complete relocation has finished and files are stable in the completed
+        /// folder). Returns true once stable, false on timeout. A null response (transient API
+        /// hiccup) is treated as "still busy".
+        /// </summary>
+        private async Task<bool> WaitForMoveToCompleteAsync(
+            string torrentId,
+            TimeSpan timeout,
+            IBitTorrentClient torrentClient,
+            CancellationToken cancellationToken)
+        {
+            var deadline = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < deadline)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var info = await torrentClient.GetTorrentInfoAsync(torrentId, cancellationToken);
+                if (info != null && !IsTransientState(info.State))
+                {
+                    return true;
+                }
+                await Task.Delay(1000, cancellationToken);
+            }
+            return false;
         }
 
         /// <summary>
