@@ -674,11 +674,17 @@ namespace SpoolDatTorrent.Core.Services
 
             // STATE: WAIT — files are actively downloading. Do nothing until the whole
             // batch completes, so we never delete the torrent mid-download.
-            LogStatus($"Awaiting completion of current download batch...");
             if (downloading.Any())
             {
-                var inProgress = downloading.Select(f => $"{f.Name} ({f.Progress:P})");
-                Logger.LogDebug($"[Spooling] Batch active. Waiting for {downloading.Count} files: {string.Join(", ", inProgress)}");
+                LogStatus($"Awaiting completion of current download batch...");
+                // Truncate the in-progress list so a large batch doesn't flood the log (and
+                // trigger size-rotation) every poll cycle.
+                var inProgress = downloading.Select(f => $"{f.Name} ({f.Progress:P})").ToList();
+                const int maxShown = 5;
+                string progressSummary = inProgress.Count <= maxShown
+                    ? string.Join(", ", inProgress)
+                    : string.Join(", ", inProgress.Take(maxShown)) + $", … (+{inProgress.Count - maxShown} more)";
+                Logger.LogDebug($"[Spooling] Batch active. Waiting for {downloading.Count} files: {progressSummary}");
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -811,7 +817,6 @@ namespace SpoolDatTorrent.Core.Services
             // (torrent added paused) or a freshly re-added torrent. Set priorities and resume.
             if (pending.Any())
             {
-                LogStatus($"Constructing next batch to fit into maximum spool size ({allocatedCapBytes.ToGigabytes():0.#} GB)...");
                 await AllocateBatchAsync(stream, torrentFiles, desiredGames, alreadyMoved, allocatedCapBytes, torrentClient, cancellationToken);
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return;
@@ -1265,6 +1270,7 @@ namespace SpoolDatTorrent.Core.Services
             if (filesToSkip.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToSkip, 0, cancellationToken);
             if (filesToDownload.Any()) await torrentClient.SetFilePrioritiesAsync(stream.TorrentIdentifier, filesToDownload, 1, cancellationToken);
 
+            LogStatus($"Constructing next batch to fit into maximum spool size ({allocatedCapBytes.ToGigabytes():0.#} GB)...");
             Logger.Log($"📦 Allocated batch of {filesToDownload.Count} file(s) ({currentFootprint.ToGigabytes():0.#} GB) for stream '{stream.Name}'. Resuming download... Files: {FormatFileCsv(torrentFiles, filesToDownload)}");
             await ApplyRateLimitIfNeededAsync(stream, torrentClient, cancellationToken);
             await torrentClient.ResumeTorrentAsync(stream.TorrentIdentifier, cancellationToken);

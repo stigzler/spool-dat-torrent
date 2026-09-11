@@ -10,7 +10,12 @@
     <MudText Typo="Typo.body2" Class="mt-1" Style="opacity: 0.8;">by stigzler</MudText>
     <MudText Typo="Typo.caption" Class="mt-1" Style="opacity: 0.6;">Version @AppVersionString</MudText>
     <MudLink Href="https://github.com/stigzler/spool-dat-torrent" Target="_blank" Class="mt-2">https://github.com/stigzler/spool-dat-torrent</MudLink>
-    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download" Href="/download/log" Class="mt-4">Download log</MudButton>
+    <div class="d-flex gap-2 mt-4">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download" Href="/download/log">Download log</MudButton>
+        <form method="post" action="/clear/log">
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" ButtonType="ButtonType.Submit">Clear log</MudButton>
+        </form>
+    </div>
 </div>
 
 @code {

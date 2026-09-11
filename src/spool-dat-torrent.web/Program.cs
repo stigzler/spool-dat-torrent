@@ -187,6 +187,16 @@ namespace SpoolDatTorrent.Web
                 return Results.File(path, "text/plain", "SpoolDatTorrent.log");
             }).RequireAuthorization();
 
+            // Clear the current log file (so a user can start a clean test run). Requires an
+            // authenticated admin session. Redirects back to the About page. Antiforgery is
+            // disabled here (matching the login endpoint) because the About page submits a
+            // plain HTML form rather than a Blazor EditForm.
+            app.MapPost("/clear/log", (HttpContext ctx) =>
+            {
+                Logger.Clear();
+                return Results.Redirect("/about");
+            }).RequireAuthorization().DisableAntiforgery();
+
             app.MapStaticAssets();
             app.MapRazorComponents<App>()
                 .AddInteractiveServerRenderMode();
