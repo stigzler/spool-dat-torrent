@@ -4,18 +4,27 @@
 <MudCard Elevation="2" Class="d-flex flex-column h-100 me-2">
     <MudCardHeader>
         <MudCardHeaderContent>
-            <div style="display: flex; align-items: center; justify-content: space-between; width: 100%; gap: 8px;">
-                <div style="display: flex; align-items: center; min-width: 0;">
+            <div class="sdt-server-header">
+                <div class="sdt-server-title">
                     <MudIcon Icon="@Icons.Material.Filled.Dns" Color="Color.Primary" />
-                    <MudText Typo="Typo.h6">@Name</MudText>
+                    <MudText Typo="Typo.h6" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@Name</MudText>
                     @if (IsDefault)
                     {
                         <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled" Class="ml-2">Default</MudChip>
                     }
                 </div>
-                <MudText Typo="Typo.caption" Color="Color.Primary" Style="white-space: nowrap; text-align: right; flex-shrink: 0;">Spooling Cap: @Profile.SpoolingCapGb GB</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Primary" Class="sdt-server-cap">Spooling Cap: @Profile.SpoolingCapGb GB</MudText>
             </div>
-            <MudChip T="string" Size="Size.Small" Class="mt-2">@Profile.ClientType</MudChip>
+            <div class="sdt-server-type-row">
+                <MudChip T="string" Size="Size.Small">@Profile.ClientType</MudChip>
+                @if (IsInUse)
+                {
+                    <div class="sdt-server-inuse">
+                        <MudIcon Icon="@Icons.Material.Filled.DoNotDisturb" Size="Size.Small" Color="Color.Warning" Class="me-1" />
+                        <MudText Typo="Typo.caption" Color="Color.Warning" Style="white-space: nowrap;">In use by @InUseStreamCount stream(s)</MudText>
+                    </div>
+                }
+            </div>
         </MudCardHeaderContent>
     </MudCardHeader>
 
@@ -24,20 +33,12 @@
     </MudCardContent>
 
     <MudCardActions>
-        <div class="d-flex align-items-center w-100" style="gap: 8px;">
+        <div class="sdt-server-actions">
             <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Edit" Disabled="IsInUse" StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
             <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="TestConnection" Disabled="_isTesting" StartIcon="@Icons.Material.Filled.Link">
                 @(_isTesting ? "Testing..." : "Test")
             </MudButton>
             <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="Delete" Disabled="IsInUse" StartIcon="@Icons.Material.Filled.Delete">Delete</MudButton>
-            <div class="flex-grow-1"></div>
-            @if (IsInUse)
-            {
-                <div class="d-flex align-items-center me-2">
-                    <MudIcon Icon="@Icons.Material.Filled.DoNotDisturb" Size="Size.Small" Color="Color.Warning" Class="me-1" />
-                    <MudText Typo="Typo.caption" Color="Color.Warning" Style="white-space: nowrap;">In use by @InUseStreamCount stream(s)</MudText>
-                </div>
-            }
         </div>
     </MudCardActions>
 </MudCard>

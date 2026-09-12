@@ -12,6 +12,7 @@
 
 <MudLayout>
     <MudAppBar Elevation="1">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" OnClick="ToggleDrawer" Title="Toggle navigation" Class="sdt-drawer-toggle" />
         <MudImage Src="/icon-128px.png" Alt="SpoolDatTorrent Icon" Height="48" Class="ml-3 mr-2" Style="object-fit: contain;" />
         <MudText Typo="Typo.h6" Style="font-family: 'Rubik', sans-serif; font-weight: 500;">SpoolDatTorrent</MudText>
         <MudSpacer />
@@ -41,7 +42,7 @@
         <MudIconButton Icon="@Icons.Material.Filled.ExitToApp" OnClick="Logout" Title="Log out" />
     </MudAppBar>
 
-    <MudDrawer Open="true" ClipMode="DrawerClipMode.Always" Elevation="2" Class="py-1">
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md" Elevation="2" Class="py-1">
         <MudNavMenu>
             <MudNavLink Href="streams" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ViewList">Streams</MudNavLink>
             <MudNavLink Href="clients" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Dns">Servers</MudNavLink>
@@ -80,11 +81,17 @@
     private ISnackbar Snackbar { get; set; } = default!;
 
     private bool _isDarkMode;
+    private bool _drawerOpen = true;
     private PersistingComponentStateSubscription _subscription;
     private Timer? _pollTimer;
     private int _activeCount;
     private int _totalCount;
     private bool _hasStreams;
+
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
 
     private async Task ToggleGlobalPause()
     {

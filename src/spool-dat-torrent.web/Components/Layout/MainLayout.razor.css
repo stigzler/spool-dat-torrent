@@ -4,6 +4,19 @@
     flex-direction: column;
 }
 
+/* The hamburger toggle is only needed on narrow screens where the responsive drawer
+   collapses to a temporary overlay. On wide screens the drawer is always visible, so hide
+   the toggle to avoid a redundant button. */
+.sdt-drawer-toggle {
+    display: none;
+}
+
+@media (max-width: 959.98px) {
+    .sdt-drawer-toggle {
+        display: inline-flex;
+    }
+}
+
 main {
     flex: 1;
 }
