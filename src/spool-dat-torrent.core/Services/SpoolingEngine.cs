@@ -687,17 +687,12 @@ namespace SpoolDatTorrent.Core.Services
             if (readyToMove.Any())
             {
                 // Wait for qBittorrent to finish relocating the completed files from the
-                // incomplete folder to the completed folder (state "moving"). Large batches
-                // (many GB) can take minutes, so use a generous timeout. If it doesn't finish,
-                // return and retry next cycle rather than copying 0-byte files.
+                // incomplete folder to the completed folder (state "moving"). This polls
+                // qBittorrent's state and returns the moment the move finishes — no timeout,
+                // no arbitrary wait. qBittorrent's state always resolves (move finishes, or
+                // transitions to error/missingFiles).
                 LogStatus($"Waiting for qBittorrent to finish moving {readyToMove.Count} completed files to the completed folder...");
-                bool settled = await WaitForMoveToCompleteAsync(stream.TorrentIdentifier, TimeSpan.FromMinutes(10), torrentClient, cancellationToken);
-                if (!settled)
-                {
-                    LogStatus($"Torrent still 'moving'; will retry next cycle.");
-                    await dbContext.SaveChangesAsync(cancellationToken);
-                    return;
-                }
+                await WaitForMoveToCompleteAsync(stream.TorrentIdentifier, torrentClient, cancellationToken);
 
                 // Files are now stable in the completed folder. Pause and copy them out.
                 LogStatus($"Halting torrent to move {readyToMove.Count} completed files...");
@@ -1431,17 +1426,17 @@ namespace SpoolDatTorrent.Core.Services
         /// <summary>
         /// Polls qBittorrent until the torrent leaves the "moving"/"checking" states (i.e. the
         /// incomplete→complete relocation has finished and files are stable in the completed
-        /// folder). Returns true once stable, false on timeout. A null response (transient API
-        /// hiccup) is treated as "still busy".
+        /// folder). There is no timeout: qBittorrent's state always resolves (move finishes, or
+        /// transitions to error/missingFiles), so we poll until it does. A heartbeat is logged
+        /// every 30s so the operator can see the wait is still alive, not hung.
         /// </summary>
-        private async Task<bool> WaitForMoveToCompleteAsync(
+        private async Task WaitForMoveToCompleteAsync(
             string torrentId,
-            TimeSpan timeout,
             IBitTorrentClient torrentClient,
             CancellationToken cancellationToken)
         {
-            var deadline = DateTime.UtcNow + timeout;
-            while (DateTime.UtcNow < deadline)
+            var lastHeartbeat = DateTime.UtcNow;
+            while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var info = await torrentClient.GetTorrentInfoAsync(torrentId, cancellationToken);
@@ -1461,11 +1456,18 @@ namespace SpoolDatTorrent.Core.Services
 
                 if (info != null && !IsTransientState(info.State))
                 {
-                    return true;
+                    return;
                 }
+
+                // Heartbeat so a long move doesn't look like a hang.
+                if ((DateTime.UtcNow - lastHeartbeat).TotalSeconds >= 30)
+                {
+                    lastHeartbeat = DateTime.UtcNow;
+                    Logger.Log($"⏳ Still waiting for qBittorrent to finish moving files (state='{info?.State ?? "unknown"}')...");
+                }
+
                 await Task.Delay(1000, cancellationToken);
             }
-            return false;
         }
 
         /// <summary>

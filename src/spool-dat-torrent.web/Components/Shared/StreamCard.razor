@@ -5,9 +5,9 @@
 
 <MudCard Elevation="2" Class="mb-4">
     <div class="pa-4 pb-0">
-        <div style="display: flex; align-items: center; width: 100%; justify-content: space-between; gap: 8px;">
-            <div style="display: flex; align-items: center; min-width: 0; flex: 1 1 auto; gap: 8px;">
-                <MudText Typo="Typo.h6" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@Stream.Name</MudText>
+        <div class="sdt-card-header">
+            <MudText Typo="Typo.h6" Class="sdt-card-name" Style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@Stream.Name</MudText>
+            <div class="sdt-card-meta">
                 @switch (Status)
                 {
                     case "Active":
@@ -32,7 +32,7 @@
                 <MudText Typo="Typo.caption" Class="text-secondary" Style="white-space: nowrap;">@CreatedText</MudText>
                 <MudText Typo="Typo.caption" Color="Color.Primary" Style="white-space: nowrap;">Spool Size Cap: @CapText</MudText>
             </div>
-            <div style="display: flex; align-items: center; flex-shrink: 0; gap: 8px;">
+            <div class="sdt-card-actions">
                 @if (IsCompleted)
                 {
                     <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" StartIcon="@Icons.Material.Filled.DeleteForever" OnClick="OnRemove" Style="white-space: nowrap; flex-shrink: 0; display: inline-flex; align-items: center;">Remove</MudButton>
