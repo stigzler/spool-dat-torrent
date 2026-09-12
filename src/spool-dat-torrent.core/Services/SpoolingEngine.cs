@@ -1448,12 +1448,15 @@ namespace SpoolDatTorrent.Core.Services
 
                 // Keep the live snapshot's client state (and status message) in sync while we
                 // block here, so the UI chip reflects qBittorrent's "moving" → "done" transition
-                // instead of freezing on the state captured at the start of the cycle.
+                // instead of freezing on the state captured at the start of the cycle. The UI
+                // reads from the reporter (InMemoryProgressStore), which is only refreshed at
+                // the end of a poll cycle — so we must push the updated snapshot to it directly.
                 if (info != null && _progressSnapshots.TryGetValue(torrentId, out var snap))
                 {
                     snap.ClientState = info.State;
                     snap.ClientDownloadedBytes = info.Downloaded;
                     snap.StatusMessage = $"qBittorrent: {info.State}";
+                    _progressReporter?.ReportStreams(_progressSnapshots.Values.ToList());
                 }
 
                 if (info != null && !IsTransientState(info.State))
